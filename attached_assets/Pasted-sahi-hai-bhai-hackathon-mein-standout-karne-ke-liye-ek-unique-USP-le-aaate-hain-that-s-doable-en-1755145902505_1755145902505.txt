@@ -1,0 +1,235 @@
+sahi hai bhai—hackathon mein standout karne ke liye ek **unique USP** le aaate hain that’s doable end-to-end in Python on Google Cloud.
+
+# USP: **“Redline Sandbox — One-click, cited clause rewrites + what-if simulator”**
+
+Aap app sirf summarize/Q\&A nahi karega—**high-risk clauses auto-detect** karega, **reason explain** karega, **evidence-cited rewrite** suggest karega, aur **what-if sliders** se terms (e.g., notice period, late fee %) change karke **risk score + suggested text live** update karega.
+**Deliverable:** PDF/HTML “redlined” version with inline citations back to the original pages.
+
+---
+
+## A. End-to-end sequential plan (Python-first)
+
+### 0) Project bootstrap
+
+```bash
+gcloud config set project $PROJECT
+gcloud services enable aiplatform.googleapis.com documentai.googleapis.com run.googleapis.com cloudbuild.googleapis.com eventarc.googleapis.com
+python -m venv .venv && source .venv/bin/activate
+pip install google-cloud-aiplatform google-cloud-documentai google-cloud-storage google-cloud-logging streamlit python-docx pypdf pymupdf pandas numpy fastapi uvicorn difflib-html
+```
+
+### 1) Ingest → OCR/structuring (Document AI)
+
+* Use **Contracts** or **General processor**.
+* Save outputs (JSON + per-page text) to GCS.
+
+```python
+# ingest/docai_runner.py
+from google.cloud import documentai, storage
+
+def run_docai(processor_id, file_gcs_uri, output_gcs_uri):
+    client = documentai.DocumentProcessorServiceClient()
+    name = client.processor_path(project=PROJECT, location=REGION, processor=processor_id)
+    req = {"name": name, "raw_document": {"content": storage.Client().bucket(...).blob(...).download_as_bytes(),
+                                           "mime_type": "application/pdf"}}
+    doc = client.process_document(request=req).document
+    storage.Client().bucket(BUCKET).blob("parsed.json").upload_from_string(documentai.Document.to_json(doc))
+    return doc
+```
+
+### 2) Chunking + metadata
+
+* Clause-aware chunks: headings, section numbers, page ranges.
+* Store: `doc_id, clause_id, title, page, text, numbers[] (days, %)`
+
+```python
+# pipeline/chunker.py
+import re, fitz  # PyMuPDF
+def chunk(doc_json):
+    # split by headings / section patterns
+    # yield {"clause_id": "...", "title": "...", "page": 5, "text": "..."}
+    ...
+```
+
+### 3) **Risk tagging (rules + lightweight model)**
+
+* Start with **rules** (fast & demo-friendly), then optional classifier.
+* Examples:
+
+  * **Auto-renewal**: regex `(auto(?:matic)?\s*renewal|renews\s*unless)`
+  * **Unilateral change**: `provider may modify .* without notice`
+  * **Liquidated damages / penalty %**
+  * **Arbitration/venue**: `binding arbitration|exclusive jurisdiction`
+  * **Termination notice**: capture days → `< 30` => higher risk
+
+```python
+# risk/rules.py
+import re
+def extract_numbers(txt): ...  # find percents, days
+def risk_tags(clause):
+    tags, score = [], 0
+    if re.search(r'auto(?:matic)?\s*renew', clause['text'], re.I): tags+=['auto_renew']; score+=2
+    if re.search(r'unilateral|may\s+modify.*without\s+notice', clause['text'], re.I): tags+=['unilateral_change']; score+=3
+    # thresholds
+    days = min(extract_numbers(clause['text']).get('days', [999]))
+    if 'termination' in clause['title'].lower() and days<30: tags+=['short_notice']; score+=2
+    return {"tags": tags, "score": score}
+```
+
+### 4) Embeddings + retrieval (for grounding)
+
+* Use `text-embedding-004` to embed each chunk (optional if doc-local only).
+* Store in **Vertex AI Vector Search** or keep in memory for demo.
+
+```python
+# rag/embed.py
+from google.cloud import aiplatform
+def embed_texts(texts):
+    emb_model = aiplatform.TextEmbeddingModel.from_pretrained("text-embedding-004")
+    return emb_model.get_embeddings(texts=[{"content":t} for t in texts])
+```
+
+### 5) **Redline generator (Gemini)**
+
+* Given a risky clause + constraints (jurisdiction neutral, tone), generate:
+
+  * **Rewrite**
+  * **Rationale (plain English)**
+  * **Negotiation fallback (strict → moderate → minimal)**
+  * **Citations** (we pass original clause + page metadata)
+
+```python
+# redline/generator.py
+from google.cloud import aiplatform
+
+def suggest_rewrite(clause, controls):
+    model = aiplatform.GenerativeModel("gemini-2.0-pro")  # or flash
+    prompt = f"""
+You are a contract assistant. Rewrite the CLAUSE in plain, fair language.
+Constraints: keep meaning, reduce risk to user, keep length similar.
+Controls: notice_days={controls['notice_days']}, late_fee_percent={controls['late_fee']}.
+
+Return JSON with keys: rewrite, rationale, fallback_levels[3].
+CITE: clause_id={clause['clause_id']}, page={clause['page']}.
+CLAUSE:
+\"\"\"{clause['text']}\"\"\"
+"""
+    resp = model.generate_content(prompt)
+    return resp.text  # parse JSON
+```
+
+### 6) **What-if simulator (function calling)**
+
+* Expose small Python **tools** Gemini can call: `set_notice_days(n)`, `cap_late_fee(p)`, recompute **risk score** and **regenerate rewrite**.
+
+```python
+# redline/tools.py
+def recompute_risk(clause_text, notice_days=None, late_fee=None):
+    # update numbers in text (templated), re-run rules -> new score
+    return {"risk_score": new_score}
+
+# In prompt, define tools schema; with Vertex function calling or do it in Python UI directly.
+```
+
+### 7) **Redline output (HTML/PDF)**
+
+* Create **HTML diff** between original and rewrite (use `difflib.HtmlDiff`), append rationale & citations; export to PDF.
+
+```python
+# export/report.py
+import difflib
+from weasyprint import HTML
+
+def html_redline(orig, new):
+    return difflib.HtmlDiff().make_table(orig.split(), new.split(), context=True)
+
+def export_pdf(report_sections, out_path):
+    html = "<html>... join sections ...</html>"
+    HTML(string=html).write_pdf(out_path)
+```
+
+### 8) **Streamlit UI (Python, Cloud Run-ready)**
+
+* Pages: **Upload → Summary → Risk Heatmap → Redline Sandbox**
+* Sandbox: left (original clause + tags), right (rewrite + rationale), bottom (What-if sliders)
+
+```python
+# app/streamlit_app.py
+import streamlit as st
+from risk.rules import risk_tags
+from redline.generator import suggest_rewrite
+from export.report import html_redline, export_pdf
+
+st.set_page_config(page_title="Legal Redline Sandbox", layout="wide")
+
+uploaded = st.file_uploader("Upload contract (PDF)")
+if uploaded:
+    # run DocAI, chunk, tag
+    risky = [c for c in chunks if (r:=risk_tags(c))['score']>=2]
+    st.metric("Risky clauses detected", len(risky))
+    pick = st.selectbox("Choose clause", [f"{c['clause_id']} — {c['title']}" for c in risky])
+    clause = risky[[...index...]]  # pick selected
+    c1, c2 = st.columns(2)
+    with c1: st.text_area("Original", clause['text'], height=300)
+    with c2:
+        notice = st.slider("Notice days", 0, 90, 30)
+        late = st.slider("Late fee %", 0, 25, 5)
+        if st.button("Suggest rewrite"):
+            out = suggest_rewrite(clause, {"notice_days":notice, "late_fee":late})
+            rewrite = json.loads(out)['rewrite']
+            st.components.v1.html(html_redline(clause['text'], rewrite), height=300, scrolling=True)
+            st.write("Rationale:", json.loads(out)['rationale'])
+    if st.button("Export PDF"):
+        export_pdf(..., "redline_report.pdf")
+        st.success("Saved redline_report.pdf")
+```
+
+### 9) Packaging & deploy (Cloud Run)
+
+* **Dockerfile**
+
+```dockerfile
+FROM python:3.11-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+COPY app/ app/
+EXPOSE 8080
+CMD ["streamlit","run","app/streamlit_app.py","--server.port=8080","--server.address=0.0.0.0"]
+```
+
+```bash
+gcloud builds submit --tag $REGION-docker.pkg.dev/$PROJECT/genai-app-repo/legal-redline
+gcloud run deploy legal-redline --image $REGION-docker.pkg.dev/$PROJECT/genai-app-repo/legal-redline --region $REGION --allow-unauthenticated
+```
+
+### 10) Observability & guardrails
+
+* Log each generation (no raw PII) to Cloud Logging/BigQuery.
+* Show “**Not legal advice**” banner.
+* Add **Safety** config for Gemini (block disallowed content).
+
+---
+
+## B. Why this USP hits hard (judging points)
+
+* **Practical impact:** goes beyond summaries to **actionable negotiation**.
+* **Explainability:** every rewrite comes with **rationale + clause citation**.
+* **Interactivity:** **What-if** controls make it feel like a real assistant.
+* **Compliance & privacy:** DocAI + optional DLP + citations keep it grounded.
+* **All-Python:** DocAI, Gemini, Streamlit, difflib, WeasyPrint—all Python.
+
+---
+
+## C. 2-minute demo script
+
+1. Upload a rental agreement (PDF).
+2. App shows summary + **Risk Heatmap** (e.g., Auto-renewal, Short notice).
+3. Open **Redline Sandbox** → choose “Termination clause”.
+4. Slide “Notice days” from 15 → 45 → click **Suggest rewrite**.
+5. See **redline diff** + rationale + “Cited from p. 6, clause 4.2”.
+6. Click **Export PDF** → download shareable redlined report.
+
+---
+
+If you want, I’ll drop a minimal repo layout (folders + ready-to-run stubs) in our next message so you can paste it straight into Cloud Shell.
