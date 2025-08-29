@@ -1,0 +1,4 @@
+fitz
+PyMuPDF
+streamlit
+google-genai
