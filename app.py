@@ -9,6 +9,7 @@ from utils.risk_detector import RiskDetector
 from utils.clause_rewriter import ClauseRewriter
 from utils.diff_generator import DiffGenerator
 from utils.export_manager import ExportManager
+from utils.chatbot import Chatbot
 
 # Page configuration
 st.set_page_config(
@@ -27,6 +28,10 @@ if 'selected_clause' not in st.session_state:
     st.session_state.selected_clause = None
 if 'rewrite_history' not in st.session_state:
     st.session_state.rewrite_history = {}
+if 'chat_history' not in st.session_state:
+    st.session_state.chat_history = []
+if 'doc_chat_history' not in st.session_state:
+    st.session_state.doc_chat_history = []
 
 # Initialize processors
 pdf_processor = PDFProcessor()
@@ -34,6 +39,7 @@ risk_detector = RiskDetector()
 clause_rewriter = ClauseRewriter()
 diff_generator = DiffGenerator()
 export_manager = ExportManager()
+chatbot = Chatbot()
 
 def main():
     # Header
@@ -48,7 +54,7 @@ def main():
         st.header("Navigation")
         page = st.radio(
             "Select Page:",
-            ["📄 Document Upload", "🔍 Risk Analysis", "✏️ Redline Sandbox", "📊 Export Report"]
+            ["📄 Document Upload", "🔍 Risk Analysis", "✏️ Redline Sandbox", "📊 Export Report", "💬 Chatbot"]
         )
     
     if page == "📄 Document Upload":
@@ -59,6 +65,8 @@ def main():
         show_redline_sandbox_page()
     elif page == "📊 Export Report":
         show_export_page()
+    elif page == "💬 Chatbot":
+        show_chatbot_page()
 
 def show_upload_page():
     st.header("📄 Document Upload & Processing")
@@ -191,7 +199,6 @@ def show_risk_analysis_page():
                 
                 if st.button(f"Edit in Sandbox", key=f"edit_{i}"):
                     st.session_state.selected_clause = clause
-                    st.rerun()
 
 def show_redline_sandbox_page():
     st.header("✏️ Redline Sandbox")
@@ -287,7 +294,6 @@ def show_redline_sandbox_page():
                     })
                     
                     st.success("✅ Rewrite generated successfully!")
-                    st.rerun()
                     
                 except Exception as e:
                     st.error(f"❌ Error generating rewrite: {str(e)}")
@@ -418,6 +424,64 @@ def show_export_page():
                     with col2:
                         st.write("**Latest Rewrite:**")
                         st.write(latest_rewrite['rewrite'][:200] + "..." if len(latest_rewrite['rewrite']) > 200 else latest_rewrite['rewrite'])
+
+def show_chatbot_page():
+    st.header("💬 Chatbot")
+
+    tab1, tab2 = st.tabs(["🤖 General Assistant", " documenti-specific Q&A"])
+
+    with tab1:
+        st.subheader("General Legal Assistant")
+        
+        # Chat history
+        for msg in st.session_state.chat_history:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+
+        # User input
+        with st.form(key='general_chat_form', clear_on_submit=True):
+            user_input = st.text_input("Ask a general legal question:", key="general_chat_input")
+            submit_button = st.form_submit_button(label='Send')
+
+        if submit_button and user_input:
+            # Add user message to history
+            st.session_state.chat_history.append({"role": "user", "content": user_input})
+            
+            # Get bot response
+            with st.spinner("Thinking..."):
+                bot_response = chatbot.get_general_response(user_input, st.session_state.chat_history)
+                st.session_state.chat_history.append({"role": "assistant", "content": bot_response})
+            
+            st.rerun()
+
+    with tab2:
+        st.subheader("Document-Specific Q&A")
+        
+        if st.session_state.processed_document is None:
+            st.warning("⚠️ Please upload a document first in the Document Upload page.")
+            return
+
+        # Chat history
+        for msg in st.session_state.doc_chat_history:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+
+        # User input
+        with st.form(key='doc_chat_form', clear_on_submit=True):
+            doc_user_input = st.text_input("Ask a question about the uploaded document:", key="doc_chat_input")
+            doc_submit_button = st.form_submit_button(label='Send')
+
+        if doc_submit_button and doc_user_input:
+            # Add user message to history
+            st.session_state.doc_chat_history.append({"role": "user", "content": doc_user_input})
+            
+            # Get bot response
+            with st.spinner("Analyzing document and thinking..."):
+                document_text = "\n".join([c['text'] for c in st.session_state.processed_document['clauses']])
+                bot_response = chatbot.get_document_context_response(doc_user_input, document_text, st.session_state.doc_chat_history)
+                st.session_state.doc_chat_history.append({"role": "assistant", "content": bot_response})
+            
+            st.rerun()
 
 if __name__ == "__main__":
     main()
