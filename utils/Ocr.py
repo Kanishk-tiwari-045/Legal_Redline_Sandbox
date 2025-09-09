@@ -14,10 +14,11 @@ from datetime import datetime
 from typing import List, Sequence, Dict, Any, Optional
 
 # For Document AI (service account method)
+from google.cloud import documentai_v1 as documentai
+
 try:
     from google.api_core.client_options import ClientOptions 
     from google.cloud import translate_v2 as translate
-    from google.cloud import documentai_v1 as documentai
     from google.oauth2 import service_account
     DOCUMENT_AI_AVAILABLE = True
 except ImportError:
