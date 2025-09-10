@@ -10,6 +10,7 @@ from utils.clause_rewriter import ClauseRewriter
 from utils.diff_generator import DiffGenerator
 from utils.export_manager import ExportManager
 from utils.chatbot import Chatbot
+from utils.privacy_processor import PrivacyProcessor
 
 # Page configuration
 st.set_page_config(
@@ -54,6 +55,8 @@ def init_session_state():
         st.session_state.chat_history = []
     if 'doc_chat_history' not in st.session_state:
         st.session_state.doc_chat_history = []
+    if 'redacted_text' not in st.session_state:
+        st.session_state.redacted_text = None
     
     # Store OCR configuration in session state
     if 'ocr_method' not in st.session_state:
@@ -119,14 +122,18 @@ def main():
     debug_session_state()
     
     # Legal disclaimer
-    st.error("⚠️ **IMPORTANT DISCLAIMER**: This tool is for informational purposes only and does not constitute legal advice. Always consult with a qualified attorney for legal matters.")
+    st.error("⚠️ **IMPORTANT DISCLAIM" + "ER**: This tool is for informational purposes only and does not constitute legal advice. Always consult with a qualified attorney for legal matters.")
+
+    # Privacy and Security Note
+    st.success("🔒 **Privacy & Security:** Your documents are processed securely and are not stored on our servers. All processing is done in memory and is deleted after you close the session.")
+    st.markdown("---")
     
     # Sidebar for navigation
     with st.sidebar:
         st.header("Navigation")
         page = st.radio(
             "Select Page:",
-            ["📄 Document Upload", "🔍 Risk Analysis", "✏️ Redline Sandbox", "📊 Export Report", "💬 Chatbot"],
+            ["📄 Document Upload", "🔒 Privacy & Security", "🔍 Risk Analysis", "✏️ Redline Sandbox", "📊 Export Report", "💬 Chatbot"],
             key="main_navigation"
         )
         
@@ -174,6 +181,8 @@ def main():
         show_redline_sandbox_page(clause_rewriter, diff_generator)
     elif page == "📊 Export Report":
         show_export_page(export_manager)
+    elif page == "🔒 Privacy & Security":
+        show_privacy_page()
     elif page == "💬 Chatbot":
         show_chatbot_page(chatbot)
 
@@ -829,6 +838,40 @@ def show_chatbot_page(chatbot):
                     st.session_state.doc_chat_history.append({"role": "assistant", "content": "Sorry, I encountered an error analyzing the document. Please try again."})
             
             st.rerun()
+
+def show_privacy_page():
+    st.header("🔒 Privacy & Security - Data Redaction")
+
+    if st.session_state.processed_document is None:
+        st.warning("⚠️ Please upload a document first in the Document Upload page.")
+        return
+
+    st.info("This page uses Google Cloud DLP to find and redact sensitive information from your document.")
+
+    # Get the full text of the document
+    full_text = "\n".join([c.get('text', '') for c in st.session_state.processed_document.get('clauses', [])])
+
+    # Redaction button
+    if st.button("🔍 Scan and Redact Document"):
+        with st.spinner("Redacting sensitive information..."):
+            try:
+                # You need to set your Google Cloud Project ID in your environment variables
+                project_id = os.getenv("GOOGLE_CLOUD_PROJECT_ID")
+                if not project_id:
+                    st.error("❌ GOOGLE_CLOUD_PROJECT_ID environment variable not set.")
+                    return
+
+                privacy_processor = PrivacyProcessor(project_id)
+                redacted_text = privacy_processor.redact_text(full_text)
+                st.session_state.redacted_text = redacted_text
+                st.success("✅ Redaction complete!")
+            except Exception as e:
+                st.error(f"❌ Error during redaction: {str(e)}")
+
+    # Display the redacted text
+    if st.session_state.redacted_text:
+        st.subheader("Redacted Document Text")
+        st.text_area("Redacted Text", st.session_state.redacted_text, height=400)
 
 if __name__ == "__main__":
     main()
