@@ -10,6 +10,7 @@ from utils.clause_rewriter import ClauseRewriter
 from utils.diff_generator import DiffGenerator
 from utils.export_manager import ExportManager
 from utils.chatbot import Chatbot
+from utils.information_extractor import InformationExtractor
 
 # Page configuration
 st.set_page_config(
@@ -37,6 +38,7 @@ if 'doc_chat_history' not in st.session_state:
 pdf_processor = PDFProcessor()
 risk_detector = RiskDetector()
 clause_rewriter = ClauseRewriter()
+information_extractor = InformationExtractor()
 diff_generator = DiffGenerator()
 export_manager = ExportManager()
 chatbot = Chatbot()
@@ -54,11 +56,14 @@ def main():
         st.header("Navigation")
         page = st.radio(
             "Select Page:",
-            ["📄 Document Upload", "🔍 Risk Analysis", "✏️ Redline Sandbox", "📊 Export Report", "💬 Chatbot"]
+            # ["📄 Document Upload", "🔍 Risk Analysis", "✏️ Redline Sandbox", "📊 Export Report", "💬 Chatbot"]
+            ["📄 Document Upload", "📊 Key Information (IER)", "🔍 Risk Analysis", "✏️ Redline Sandbox", "📊 Export Report", "💬 Chatbot"]
         )
     
     if page == "📄 Document Upload":
         show_upload_page()
+    elif page == "📊 Key Information (IER)":
+        show_ier_page()
     elif page == "🔍 Risk Analysis":
         show_risk_analysis_page()
     elif page == "✏️ Redline Sandbox":
@@ -78,42 +83,75 @@ def show_upload_page():
     )
     
     if uploaded_file is not None:
-        with st.spinner("Processing document..."):
+        # with st.spinner("Processing document..."):
+        #     try:
+        #         # Save uploaded file temporarily
+        #         with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+        #             tmp_file.write(uploaded_file.read())
+        #             tmp_file_path = tmp_file.name
+                
+        #         # Process the PDF
+        #         # document_data = pdf_processor.process_pdf(tmp_file_path)
+
+        #         # Process the PDF using multimodal AI
+        #         document_data = pdf_processor.process_pdf_multimodal(tmp_file_path)
+                
+        #         # Clean up temporary file
+        #         os.unlink(tmp_file_path)
+                
+        #         # Store in session state
+        #         st.session_state.processed_document = document_data
+                
+        #         # Display summary
+        #         st.success("✅ Document processed successfully!")
+                
+        #         col1, col2, col3 = st.columns(3)
+        #         with col1:
+        #             st.metric("Total Pages", document_data['total_pages'])
+        #         with col2:
+        #             st.metric("Total Clauses", len(document_data['clauses']))
+        #         with col3:
+        #             st.metric("Word Count", document_data['word_count'])
+                
+        #         # Show preview of clauses
+        #         st.subheader("Document Preview")
+        #         for i, clause in enumerate(document_data['clauses'][:3]):  # Show first 3 clauses
+        #             with st.expander(f"Clause {i+1}: {clause['title']}"):
+        #                 st.write(f"**Page:** {clause['page']}")
+        #                 st.write(f"**Text:** {clause['text'][:200]}...")
+                
+        #         # Automatically run risk analysis
+        #         with st.spinner("Analyzing risks..."):
+        #             risky_clauses = risk_detector.analyze_document(document_data)
+        #             st.session_state.risky_clauses = risky_clauses
+                
+        #         st.info(f"🎯 Found {len(risky_clauses)} potentially risky clauses. Navigate to Risk Analysis to review them.")
+                
+        #     except Exception as e:
+        #         st.error(f"❌ Error processing document: {str(e)}")
+
+        # NEW UPGRADED SECTION
+        with st.spinner("Performing multimodal analysis on document..."):
             try:
-                # Save uploaded file temporarily
+                # Save uploaded file temporarily (this part is the same)
                 with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
                     tmp_file.write(uploaded_file.read())
                     tmp_file_path = tmp_file.name
                 
-                # Process the PDF
-                document_data = pdf_processor.process_pdf(tmp_file_path)
+                # --- The main change ---
+                document_data = pdf_processor.process_pdf_multimodal(tmp_file_path)
+                os.unlink(tmp_file_path) # cleanup is the same
                 
-                # Clean up temporary file
-                os.unlink(tmp_file_path)
-                
-                # Store in session state
                 st.session_state.processed_document = document_data
-                
-                # Display summary
-                st.success("✅ Document processed successfully!")
-                
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("Total Pages", document_data['total_pages'])
-                with col2:
-                    st.metric("Total Clauses", len(document_data['clauses']))
-                with col3:
-                    st.metric("Word Count", document_data['word_count'])
-                
-                # Show preview of clauses
-                st.subheader("Document Preview")
-                for i, clause in enumerate(document_data['clauses'][:3]):  # Show first 3 clauses
-                    with st.expander(f"Clause {i+1}: {clause['title']}"):
-                        st.write(f"**Page:** {clause['page']}")
-                        st.write(f"**Text:** {clause['text'][:200]}...")
-                
-                # Automatically run risk analysis
-                with st.spinner("Analyzing risks..."):
+                st.success("✅ Document processed successfully!") # updated success message
+
+                # --- New block to call IER ---
+                with st.spinner("Extracting key information..."):
+                    full_text = "\\n".join([c.get('text', '') for c in document_data.get('clauses', [])])
+                    st.session_state.extracted_entities = information_extractor.extract_entities(full_text)
+
+                # --- New block to call Risk Analysis ---
+                with st.spinner("Analyzing risks with visual context..."):
                     risky_clauses = risk_detector.analyze_document(document_data)
                     st.session_state.risky_clauses = risky_clauses
                 
@@ -121,8 +159,26 @@ def show_upload_page():
                 
             except Exception as e:
                 st.error(f"❌ Error processing document: {str(e)}")
+
     else:
         st.info("👆 Please upload a PDF contract to begin analysis")
+
+def show_ier_page():
+    st.header("📊 Key Information (Information Extraction & Retrieval)")
+    if not st.session_state.get('extracted_entities'):
+        st.warning("⚠️ Please upload a document first to extract its key information.")
+        return
+
+    st.subheader("Extracted Contract Details")
+    entities = st.session_state.extracted_entities
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Governing Law", entities.get("governing_law", "N/A"))
+        st.metric("Termination Notice (Days)", str(entities.get("termination_notice_period_days", "N/A")))
+    with col2:
+        st.metric("Liability Cap", str(entities.get("liability_cap_amount", "N/A")))
+        st.metric("Late Fee (%)", f"{entities.get('late_fee_percentage', 'N/A')}")
 
 def show_risk_analysis_page():
     st.header("🔍 Risk Analysis")

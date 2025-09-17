@@ -4,20 +4,36 @@ import os
 from typing import Dict, List, Any, Tuple
 from google import genai
 from google.genai import types
+import google.generativeai as genai
 
 class RiskDetector:
     """Detects risky clauses in legal documents using AI-powered legal analysis"""
     
     def __init__(self):
-        # Initialize Gemini client for AI-powered risk analysis
-        api_key = os.environ.get("GEMINI_API_KEY")
-        if api_key:
-            self.client = genai.Client(api_key=api_key)
+        """Initializes the RiskDetector, setting up the AI model and preserving your pattern-based fallback."""
+        try:
+            api_key = os.getenv("GEMINI_API_KEY")
+            if not api_key:
+                raise ValueError("GEMINI_API_KEY environment variable is not found.")
+            genai.configure(api_key=api_key)
+            # Use the modern way to get the model
+            self.model = genai.GenerativeModel('gemini-1.5-flash')
             self.use_ai = True
-        else:
-            self.client = None
+            print("✅ Gemini AI model for Risk Detector initialized successfully.")
+        except Exception as e:
+            self.model = None
             self.use_ai = False
-            print("Warning: GEMINI_API_KEY not found, falling back to pattern-based analysis")
+            print(f"⚠️ Warning: Gemini AI model failed to initialize ({e}). Falling back to pattern-based analysis.")
+
+        # # Initialize Gemini client for AI-powered risk analysis
+        # api_key = os.environ.get("GEMINI_API_KEY")
+        # if api_key:
+        #     self.client = genai.Client(api_key=api_key)
+        #     self.use_ai = True
+        # else:
+        #     self.client = None
+        #     self.use_ai = False
+        #     print("Warning: GEMINI_API_KEY not found, falling back to pattern-based analysis")
         self.risk_patterns = {
             'auto_renew': {
                 'patterns': [
@@ -121,82 +137,139 @@ class RiskDetector:
             return self._pattern_analyze_clause(clause)
     
     def _ai_analyze_clause(self, clause: Dict[str, Any]) -> Dict[str, Any]:
-        """Use AI to analyze clause for legal risks and disadvantages"""
+        """
+        Use a powerful prompt with Gemini 1.5 Flash to analyze a clause for risks.
+        Falls back to your pattern-based method on any failure.
+        """
         try:
-            system_prompt = """You are an expert legal analyst specializing in contract risk assessment. 
-            Analyze the provided contract clause and identify all potential legal risks, disadvantages, 
-            privacy concerns, and unfair terms.
-            
-            Focus on:
-            1. Legal disadvantages to one party
-            2. Privacy and data protection risks  
-            3. Unfair termination conditions
-            4. Excessive penalties or liability limitations
-            5. Jurisdictional disadvantages
-            6. Automatic renewals or binding terms
-            7. Unilateral change rights
-            8. Vague or ambiguous language that could be exploited
-            9. Financial risks and fee structures
-            10. Dispute resolution limitations
-            
-            Respond with JSON in this exact format:
-            {
-                "risk_score": <integer from 0-5>,
-                "risk_tags": ["tag1", "tag2"],
-                "risk_summary": "Brief summary of main risks",
-                "legal_disadvantages": "Specific legal disadvantages identified",
-                "privacy_concerns": "Data privacy and protection issues",
-                "unfair_terms": "Terms that create imbalance between parties",
-                "recommendations": "How to address these risks"
-            }"""
-            
-            user_prompt = f"""Analyze this contract clause for legal risks and disadvantages:
+            # This is the new, more demanding prompt for better accuracy.
+            # It also now accepts the visual_context field.
+            prompt = f"""
+            You are a meticulous legal analyst. Your task is to identify and score the single most significant risk in the following contract clause.
 
-**CLAUSE TITLE:** {clause['title']}
+            **Clause Information:**
+            - **Title:** {clause.get('title', 'N/A')}
+            - **Visual Context:** {clause.get('visual_context', 'Standard paragraph')}
+            - **Text:**
+            ---
+            {clause.get('text', '')}
+            ---
 
-**CLAUSE TEXT:**
-{clause['text']}
+            **Instructions:**
+            1.  Analyze the text and its visual context for potential risks like ambiguity, one-sidedness, or harsh terms.
+            2.  Identify the single most severe risk.
+            3.  Provide a risk score from 0 (no risk) to 5 (critical risk).
+            4.  Provide a concise rationale explaining WHY it is a risk.
+            5.  You MUST respond with a single, clean JSON object with these exact keys: "is_risky", "risk_score", "rationale".
 
-**ANALYSIS REQUEST:**
-Provide a comprehensive legal risk assessment focusing on actual legal disadvantages, 
-privacy risks, and unfair terms rather than just sentence patterns. Consider how this 
-clause could be used against one party and what legal protections it removes."""
-
-            if not self.client:
-                return self._pattern_analyze_clause(clause)
-                
-            response = self.client.models.generate_content(
-                model="gemini-2.5-pro",
-                contents=[
-                    types.Content(role="user", parts=[types.Part(text=user_prompt)])
-                ],
-                config=types.GenerateContentConfig(
-                    system_instruction=system_prompt,
-                    response_mime_type="application/json",
-                    temperature=0.3
-                ),
-            )
+            Example of a perfect response for a risky clause:
+            {{
+            "is_risky": true,
+            "risk_score": 4,
+            "rationale": "This auto-renewal clause has an extremely short 10-day notice period, making it difficult for a party to exit the contract."
+            }}
+            """
+            response = self.model.generate_content(prompt)
             
-            if response.text:
-                ai_analysis = json.loads(response.text)
-                
-                # Convert AI analysis to our expected format
+            # Safely extract the JSON from the model's response
+            json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
+            if not json_match:
+                raise ValueError("AI response did not contain a valid JSON object.")
+            
+            ai_analysis = json.loads(json_match.group(0))
+
+            # This check is crucial. We only want to return a result if the AI found a genuine risk.
+            if ai_analysis.get("is_risky"):
                 return {
                     'score': ai_analysis.get('risk_score', 0),
-                    'tags': ai_analysis.get('risk_tags', []),
-                    'rationale': ai_analysis.get('risk_summary', ''),
-                    'legal_disadvantages': ai_analysis.get('legal_disadvantages', ''),
-                    'privacy_concerns': ai_analysis.get('privacy_concerns', ''),
-                    'unfair_terms': ai_analysis.get('unfair_terms', ''),
-                    'recommendations': ai_analysis.get('recommendations', '')
+                    'tags': ['ai_identified'], # A generic tag for AI-found risks
+                    'rationale': ai_analysis.get('rationale', 'No rationale provided.')
                 }
-                
+            else:
+                # If AI says there's no risk, return a zero-risk score
+                return {'score': 0, 'tags': [], 'rationale': ''}
+
         except Exception as e:
-            print(f"AI analysis failed for clause '{clause['title']}': {str(e)}")
+            print(f"AI analysis failed for clause '{clause.get('title', '')}': {e}. Using pattern-based fallback.")
             return self._pattern_analyze_clause(clause)
         
-        # Fallback in case no response
-        return self._pattern_analyze_clause(clause)
+#     def _ai_analyze_clause(self, clause: Dict[str, Any]) -> Dict[str, Any]:
+#         """Use AI to analyze clause for legal risks and disadvantages"""
+#         try:
+#             system_prompt = """You are an expert legal analyst specializing in contract risk assessment. 
+#             Analyze the provided contract clause and identify all potential legal risks, disadvantages, 
+#             privacy concerns, and unfair terms.
+            
+#             Focus on:
+#             1. Legal disadvantages to one party
+#             2. Privacy and data protection risks  
+#             3. Unfair termination conditions
+#             4. Excessive penalties or liability limitations
+#             5. Jurisdictional disadvantages
+#             6. Automatic renewals or binding terms
+#             7. Unilateral change rights
+#             8. Vague or ambiguous language that could be exploited
+#             9. Financial risks and fee structures
+#             10. Dispute resolution limitations
+            
+#             Respond with JSON in this exact format:
+#             {
+#                 "risk_score": <integer from 0-5>,
+#                 "risk_tags": ["tag1", "tag2"],
+#                 "risk_summary": "Brief summary of main risks",
+#                 "legal_disadvantages": "Specific legal disadvantages identified",
+#                 "privacy_concerns": "Data privacy and protection issues",
+#                 "unfair_terms": "Terms that create imbalance between parties",
+#                 "recommendations": "How to address these risks"
+#             }"""
+            
+#             user_prompt = f"""Analyze this contract clause for legal risks and disadvantages:
+
+# **CLAUSE TITLE:** {clause['title']}
+
+# **CLAUSE TEXT:**
+# {clause['text']}
+
+# **ANALYSIS REQUEST:**
+# Provide a comprehensive legal risk assessment focusing on actual legal disadvantages, 
+# privacy risks, and unfair terms rather than just sentence patterns. Consider how this 
+# clause could be used against one party and what legal protections it removes."""
+
+#             if not self.client:
+#                 return self._pattern_analyze_clause(clause)
+                
+#             response = self.client.models.generate_content(
+#                 model="gemini-2.5-pro",
+#                 contents=[
+#                     types.Content(role="user", parts=[types.Part(text=user_prompt)])
+#                 ],
+#                 config=types.GenerateContentConfig(
+#                     system_instruction=system_prompt,
+#                     response_mime_type="application/json",
+#                     temperature=0.3
+#                 ),
+#             )
+            
+#             if response.text:
+#                 ai_analysis = json.loads(response.text)
+                
+#                 # Convert AI analysis to our expected format
+#                 return {
+#                     'score': ai_analysis.get('risk_score', 0),
+#                     'tags': ai_analysis.get('risk_tags', []),
+#                     'rationale': ai_analysis.get('risk_summary', ''),
+#                     'legal_disadvantages': ai_analysis.get('legal_disadvantages', ''),
+#                     'privacy_concerns': ai_analysis.get('privacy_concerns', ''),
+#                     'unfair_terms': ai_analysis.get('unfair_terms', ''),
+#                     'recommendations': ai_analysis.get('recommendations', '')
+#                 }
+                
+#         except Exception as e:
+#             print(f"AI analysis failed for clause '{clause['title']}': {str(e)}")
+#             return self._pattern_analyze_clause(clause)
+        
+#         # Fallback in case no response
+#         return self._pattern_analyze_clause(clause)
     
     def _pattern_analyze_clause(self, clause: Dict[str, Any]) -> Dict[str, Any]:
         """Fallback pattern-based analysis when AI is not available"""

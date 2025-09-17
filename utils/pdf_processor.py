@@ -1,3 +1,7 @@
+import google.generativeai as genai
+from PIL import Image
+import io
+import json
 import fitz  # PyMuPDF
 import re
 import os
@@ -15,6 +19,17 @@ class PDFProcessor:
     """Handles PDF processing and text extraction"""
     
     def __init__(self):
+        # Initialize Gemini model
+        try:
+            api_key = os.getenv("GEMINI_API_KEY")
+            if not api_key:
+                raise ValueError("GEMINI_API_KEY environment variable not found.")
+            genai.configure(api_key=api_key)
+            self.model = genai.GenerativeModel('gemini-1.5-flash')
+            print("✅ Gemini AI model initialized successfully.")
+        except Exception as e:
+            raise RuntimeError(f"Failed to initialize Gemini model: {e}")
+
         self.clause_patterns = [
             r'^\d+\.\s*',  # "1. " or "1."
             r'^[A-Z][A-Z\s]+:?',  # "TERMINATION:" or "TERMINATION"
@@ -31,6 +46,59 @@ class PDFProcessor:
         self.ocr_api_key = None
         self.ocr_enabled = OCR_AVAILABLE
     
+    # Processing documents with multimodal AI
+    def process_pdf_multimodal(self, file_path: str) -> Dict[str, Any]:
+        """
+        Processes a PDF using the primary multimodal AI approach.
+        If it fails, it automatically calls your original text-based method as a fallback.
+        """
+        print("🚀 Starting primary analysis with Multimodal AI...")
+        doc = None
+        try:
+            all_clauses = []
+            doc = fitz.open(file_path)
+            
+            for page_num, page in enumerate(doc):
+                pix = page.get_pixmap(dpi=200)
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                
+                img_byte_arr = io.BytesIO()
+                img.save(img_byte_arr, format='JPEG')
+                image_bytes = img_byte_arr.getvalue()
+
+                image_part = {"mime_type": "image/jpeg", "data": image_bytes}
+                
+                prompt = """
+                Analyze this contract page image. Extract every distinct clause. For each clause, provide a brief "visual_context" (e.g., "bold heading", "fine print").
+                Respond ONLY with a JSON array of objects, each with these keys: "clause_id", "title", "text", "page", "visual_context".
+                """
+
+                response = self.model.generate_content([prompt, image_part])
+                
+                # Use regex to safely find the JSON block
+                cleaned_response = re.search(r'\[.*\]', response.text, re.DOTALL).group(0)
+                page_clauses = json.loads(cleaned_response)
+                
+                for clause in page_clauses:
+                    clause['page'] = page_num + 1
+
+                all_clauses.extend(page_clauses)
+                print(f"✅ AI extracted {len(page_clauses)} clauses from page {page_num + 1}.")
+
+            if not all_clauses:
+                raise ValueError("Multimodal AI extracted no clauses.")
+
+            word_count = sum(len(c.get('text', '').split()) for c in all_clauses)
+            return {'clauses': all_clauses, 'total_pages': len(doc), 'word_count': word_count}
+
+        except Exception as e:
+            print(f"❌ Multimodal AI failed: {e}. Switching to your original text-based fallback method.")
+            # This is the crucial fallback to your original code
+            return self.process_pdf(file_path) # NOTE: We are calling your original process_pdf
+        finally:
+            if doc:
+                doc.close()
+
     def process_pdf(self, file_path: str) -> Dict[str, Any]:
         """Process PDF and extract structured data"""
         try:
