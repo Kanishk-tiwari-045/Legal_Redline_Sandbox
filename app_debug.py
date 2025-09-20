@@ -11,6 +11,7 @@ from utils.diff_generator import DiffGenerator
 from utils.export_manager import ExportManager
 from utils.chatbot import Chatbot
 from utils.privacy_processor import PrivacyProcessor
+from utils.contextual_explainer import ContextualExplainer
 
 # Page configuration
 st.set_page_config(
@@ -94,13 +95,14 @@ def get_processors():
         diff_generator = DiffGenerator()
         export_manager = ExportManager()
         chatbot = Chatbot()
+        contextual_explainer = ContextualExplainer()
         print("✅ All processors initialized successfully")
-        return pdf_processor, risk_detector, clause_rewriter, diff_generator, export_manager, chatbot
+        return pdf_processor, risk_detector, clause_rewriter, diff_generator, export_manager, chatbot, contextual_explainer
     except Exception as e:
         print(f"❌ Error initializing processors: {str(e)}")
         st.error(f"Error initializing processors: {str(e)}")
         st.info("Some features may not work. Please check your environment variables.")
-        return None, None, None, None, None, None
+        return None, None, None, None, None, None, None
 
 def main():
     # Initialize session state first
@@ -112,7 +114,7 @@ def main():
         st.error("Failed to initialize processors. Please check your configuration.")
         return
         
-    pdf_processor, risk_detector, clause_rewriter, diff_generator, export_manager, chatbot = processors
+    pdf_processor, risk_detector, clause_rewriter, diff_generator, export_manager, chatbot, contextual_explainer = processors
     
     # Header
     st.title("⚖️ Legal Redline Sandbox - Debug Mode")
@@ -133,7 +135,7 @@ def main():
         st.header("Navigation")
         page = st.radio(
             "Select Page:",
-            ["📄 Document Upload", "🔒 Privacy & Security", "🔍 Risk Analysis", "✏️ Redline Sandbox", "📊 Export Report", "💬 Chatbot"],
+            ["📄 Document Upload", "🔒 Privacy & Security", "🔍 Risk Analysis", "✏️ Redline Sandbox", "🧠 Legal Explainer", "📊 Export Report", "💬 Chatbot"],
             key="main_navigation"
         )
         
@@ -179,6 +181,8 @@ def main():
         show_risk_analysis_page()
     elif page == "✏️ Redline Sandbox":
         show_redline_sandbox_page(clause_rewriter, diff_generator)
+    elif page == "🧠 Legal Explainer":
+        show_legal_explainer_page(contextual_explainer)
     elif page == "📊 Export Report":
         show_export_page(export_manager)
     elif page == "🔒 Privacy & Security":
@@ -872,6 +876,292 @@ def show_privacy_page():
     if st.session_state.redacted_text:
         st.subheader("Redacted Document Text")
         st.text_area("Redacted Text", st.session_state.redacted_text, height=400)
+
+def show_legal_explainer_page(contextual_explainer):
+    """New page for the Contextual Explanation Engine"""
+    st.header("🧠 Legal Document Explainer")
+    st.markdown("### AI-Powered Legal Term Explanation & Clause Analysis")
+    
+    if st.session_state.processed_document is None:
+        st.warning("⚠️ Please upload a document first in the Document Upload page.")
+        return
+    
+    # Add tabs for different explanation features
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📚 Term Explainer", 
+        "🔍 Clause Analyzer", 
+        "🗣️ Plain English", 
+        "📖 Historical Context"
+    ])
+    
+    with tab1:
+        st.subheader("📚 Legal Term Explainer")
+        st.markdown("Get plain-English explanations of legal terminology")
+        
+        # Term input methods
+        input_method = st.radio(
+            "How would you like to input the legal term?",
+            ["🔍 Select from document", "✏️ Type manually"],
+            horizontal=True
+        )
+        
+        if input_method == "🔍 Select from document":
+            # Extract all text and find legal terms
+            all_text = " ".join([clause['text'] for clause in st.session_state.processed_document['clauses']])
+            detected_terms = contextual_explainer._extract_legal_terms(all_text)
+            
+            if detected_terms:
+                selected_term = st.selectbox(
+                    "Select a legal term found in your document:",
+                    options=detected_terms,
+                    help="These terms were automatically detected in your document"
+                )
+                context_clause = st.text_area(
+                    "Context (optional - where this term appears):",
+                    height=100,
+                    help="Provide context to get a more specific explanation"
+                )
+            else:
+                st.info("No legal terms automatically detected. Try typing manually.")
+                selected_term = None
+        else:
+            selected_term = st.text_input(
+                "Enter a legal term to explain:",
+                placeholder="e.g., force majeure, liquidated damages, indemnification"
+            )
+            context_clause = st.text_area(
+                "Context (optional):",
+                height=100,
+                help="Provide context where this term appears for better explanation"
+            )
+        
+        if selected_term and st.button("🔍 Explain Term", type="primary"):
+            with st.spinner(f"Analyzing '{selected_term}' using legal knowledge base..."):
+                try:
+                    explanation = contextual_explainer.explain_legal_term(
+                        selected_term, 
+                        context_clause if 'context_clause' in locals() else ""
+                    )
+                    
+                    # Display explanation in an organized way
+                    col1, col2 = st.columns([2, 1])
+                    
+                    with col1:
+                        st.markdown("#### 📖 Plain English Explanation")
+                        st.write(explanation.plain_english)
+                        
+                        st.markdown("#### ⚖️ Legal Definition") 
+                        st.write(explanation.legal_definition)
+                        
+                        st.markdown("#### 🎯 Real-World Impact")
+                        st.write(explanation.real_world_impact)
+                        
+                        if explanation.alternatives:
+                            st.markdown("#### 🔄 Alternative Terms")
+                            for alt in explanation.alternatives:
+                                st.write(f"• {alt}")
+                    
+                    with col2:
+                        # Risk level indicator
+                        risk_colors = {"Low": "🟢", "Medium": "🟡", "High": "🔴"}
+                        st.markdown(f"#### {risk_colors.get(explanation.risk_level, '🟡')} Risk Level")
+                        st.write(explanation.risk_level)
+                        
+                        if explanation.citations:
+                            st.markdown("#### 📚 Sources")
+                            for citation in explanation.citations[:3]:
+                                if citation:
+                                    st.markdown(f"[Source]({citation})")
+                    
+                except Exception as e:
+                    st.error(f"❌ Error explaining term: {str(e)}")
+    
+    with tab2:
+        st.subheader("🔍 Clause Impact Analyzer")
+        st.markdown("Understand the real-world implications of contract clauses")
+        
+        # Clause selection
+        if st.session_state.risky_clauses:
+            clause_options = [
+                f"{i+1}. {clause['title']}" 
+                for i, clause in enumerate(st.session_state.risky_clauses)
+            ]
+            
+            selected_clause_idx = st.selectbox(
+                "Select a clause to analyze:",
+                range(len(clause_options)),
+                format_func=lambda x: clause_options[x]
+            )
+            
+            selected_clause = st.session_state.risky_clauses[selected_clause_idx]
+            
+            st.text_area(
+                "Selected Clause:",
+                selected_clause['text'],
+                height=150,
+                disabled=True
+            )
+            
+            if st.button("🔍 Analyze Clause Impact", type="primary"):
+                with st.spinner("Analyzing clause implications..."):
+                    try:
+                        analysis = contextual_explainer.analyze_clause_impact(selected_clause['text'])
+                        
+                        # Display analysis
+                        st.markdown("#### 📝 Plain English Summary")
+                        st.info(analysis.plain_english_summary)
+                        
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            st.markdown("#### ⚠️ Potential Impacts")
+                            for impact in analysis.potential_impacts:
+                                st.write(f"• {impact}")
+                            
+                            st.markdown("#### 🚨 Risk Factors") 
+                            for risk in analysis.risk_factors:
+                                st.write(f"• {risk}")
+                        
+                        with col2:
+                            st.markdown("#### 💡 Negotiation Tips")
+                            for tip in analysis.negotiation_tips:
+                                st.write(f"• {tip}")
+                        
+                        if analysis.alternative_language:
+                            st.markdown("#### 🔄 Better Language Options")
+                            for i, alt in enumerate(analysis.alternative_language, 1):
+                                st.write(f"{i}. {alt}")
+                        
+                        if analysis.historical_context:
+                            st.markdown("#### 📚 Historical Context")
+                            st.write(analysis.historical_context)
+                    
+                    except Exception as e:
+                        st.error(f"❌ Error analyzing clause: {str(e)}")
+        else:
+            st.info("No risky clauses detected. Please run risk analysis first.")
+    
+    with tab3:
+        st.subheader("🗣️ Plain English Translator")
+        st.markdown("Convert complex legal language to plain English")
+        
+        # Option to use existing clause or input custom text
+        translation_source = st.radio(
+            "What would you like to translate?",
+            ["📄 Clause from document", "✏️ Custom legal text"],
+            horizontal=True
+        )
+        
+        if translation_source == "📄 Clause from document":
+            if st.session_state.processed_document['clauses']:
+                clause_options = [
+                    f"{i+1}. {clause['title']}"
+                    for i, clause in enumerate(st.session_state.processed_document['clauses'])
+                ]
+                
+                selected_idx = st.selectbox(
+                    "Select clause to translate:",
+                    range(len(clause_options)),
+                    format_func=lambda x: clause_options[x]
+                )
+                
+                text_to_translate = st.session_state.processed_document['clauses'][selected_idx]['text']
+            else:
+                st.info("No clauses found in document.")
+                text_to_translate = ""
+        else:
+            text_to_translate = st.text_area(
+                "Enter legal text to translate:",
+                height=150,
+                placeholder="Paste complex legal language here..."
+            )
+        
+        if text_to_translate and st.button("🗣️ Translate to Plain English", type="primary"):
+            with st.spinner("Creating plain English alternatives..."):
+                try:
+                    alternatives = contextual_explainer.suggest_plain_english_alternatives(text_to_translate)
+                    
+                    st.markdown("#### 📝 Original Text")
+                    st.text_area("Original:", text_to_translate, height=100, disabled=True)
+                    
+                    st.markdown("#### 🗣️ Plain English Alternatives")
+                    for i, alternative in enumerate(alternatives, 1):
+                        with st.expander(f"Option {i}"):
+                            st.write(alternative)
+                
+                except Exception as e:
+                    st.error(f"❌ Error generating alternatives: {str(e)}")
+    
+    with tab4:
+        st.subheader("📖 Historical Context & Precedents")
+        st.markdown("Understand how similar clauses have been interpreted by courts")
+        
+        # Similar interface to clause analyzer but focused on historical context
+        if st.session_state.risky_clauses:
+            clause_options = [
+                f"{i+1}. {clause['title']}" 
+                for i, clause in enumerate(st.session_state.risky_clauses)
+            ]
+            
+            selected_clause_idx = st.selectbox(
+                "Select clause for historical analysis:",
+                range(len(clause_options)),
+                format_func=lambda x: clause_options[x],
+                key="historical_clause_select"
+            )
+            
+            selected_clause = st.session_state.risky_clauses[selected_clause_idx]
+            
+            st.text_area(
+                "Clause for Historical Analysis:",
+                selected_clause['text'],
+                height=150,
+                disabled=True,
+                key="historical_clause_text"
+            )
+            
+            if st.button("📖 Get Historical Context", type="primary"):
+                with st.spinner("Researching legal precedents and historical interpretations..."):
+                    try:
+                        historical_context = contextual_explainer.get_historical_context(selected_clause['text'])
+                        
+                        st.markdown("#### 📚 Historical Interpretation & Precedents")
+                        st.write(historical_context)
+                        
+                        # Additional info box
+                        st.info("""
+                        💡 **Understanding Historical Context**
+                        
+                        This analysis looks at how courts have historically interpreted similar contract clauses. 
+                        It can help you understand:
+                        • How likely a clause is to be enforced
+                        • Common legal challenges to similar language
+                        • Trends in judicial interpretation
+                        • Potential weaknesses in the clause
+                        """)
+                    
+                    except Exception as e:
+                        st.error(f"❌ Error getting historical context: {str(e)}")
+        else:
+            st.info("No risky clauses detected. Please run risk analysis first.")
+        
+        # Add a section for custom historical research
+        st.markdown("---")
+        st.markdown("#### 🔍 Custom Historical Research")
+        custom_clause = st.text_area(
+            "Enter any clause for historical research:",
+            height=100,
+            placeholder="Enter contract language to research historical interpretations..."
+        )
+        
+        if custom_clause and st.button("🔍 Research This Clause", key="custom_historical"):
+            with st.spinner("Researching historical interpretations..."):
+                try:
+                    context = contextual_explainer.get_historical_context(custom_clause)
+                    st.markdown("#### 📚 Research Results")
+                    st.write(context)
+                except Exception as e:
+                    st.error(f"❌ Error researching clause: {str(e)}")
 
 if __name__ == "__main__":
     main()

@@ -10,6 +10,7 @@ from utils.clause_rewriter import ClauseRewriter
 from utils.diff_generator import DiffGenerator
 from utils.export_manager import ExportManager
 from utils.chatbot import Chatbot
+from utils.contextual_explainer import ContextualExplainer
 
 # Page configuration
 st.set_page_config(
@@ -40,6 +41,7 @@ clause_rewriter = ClauseRewriter()
 diff_generator = DiffGenerator()
 export_manager = ExportManager()
 chatbot = Chatbot()
+contextual_explainer = ContextualExplainer()
 
 def main():
     # Header
@@ -54,7 +56,7 @@ def main():
         st.header("Navigation")
         page = st.radio(
             "Select Page:",
-            ["📄 Document Upload", "🔍 Risk Analysis", "✏️ Redline Sandbox", "📊 Export Report", "💬 Chatbot"]
+            ["📄 Document Upload", "🔍 Risk Analysis", "✏️ Redline Sandbox", "🧠 Legal Explainer", "📊 Export Report", "💬 Chatbot"]
         )
     
     if page == "📄 Document Upload":
@@ -63,6 +65,8 @@ def main():
         show_risk_analysis_page()
     elif page == "✏️ Redline Sandbox":
         show_redline_sandbox_page()
+    elif page == "🧠 Legal Explainer":
+        show_legal_explainer_page()
     elif page == "📊 Export Report":
         show_export_page()
     elif page == "💬 Chatbot":
@@ -482,6 +486,61 @@ def show_chatbot_page():
                 st.session_state.doc_chat_history.append({"role": "assistant", "content": bot_response})
             
             st.rerun()
+
+def show_legal_explainer_page():
+    """Legal Explainer page with basic functionality for main app"""
+    st.header("🧠 Legal Document Explainer")
+    st.markdown("### AI-Powered Legal Term Explanation & Clause Analysis")
+    
+    if st.session_state.processed_document is None:
+        st.warning("⚠️ Please upload a document first in the Document Upload page.")
+        return
+    
+    st.info("🚧 **Legal Explainer Feature**")
+    st.markdown("""
+    The Legal Explainer uses Google Cloud RAG to provide:
+    - **Legal Term Explanations**: Plain English definitions of legal jargon
+    - **Clause Impact Analysis**: Real-world implications of contract terms
+    - **Plain English Alternatives**: Simplified language suggestions  
+    - **Historical Context**: How similar clauses have been interpreted
+    
+    **Current Status**: 
+    - ✅ Basic functionality implemented
+    - 🔧 Google Cloud RAG setup required for full features
+    - 📋 Currently using fallback mode with Gemini-only explanations
+    
+    **To enable full RAG features**:
+    1. Follow the setup guide in `DISCOVERY_ENGINE_FIX.md`
+    2. Create Google Cloud Discovery Engine data stores
+    3. Populate with legal knowledge base content
+    
+    **For now, try the advanced features in the Debug version**: 
+    Run `streamlit run app_debug.py` for the full Legal Explainer interface.
+    """)
+    
+    # Simple term explanation demo
+    st.subheader("📚 Quick Legal Term Lookup")
+    user_term = st.text_input("Enter a legal term to explain:", placeholder="e.g., indemnification, force majeure")
+    
+    if user_term and st.button("🔍 Explain Term"):
+        with st.spinner(f"Looking up '{user_term}'..."):
+            try:
+                # Use the contextual explainer in fallback mode
+                explanation = contextual_explainer.explain_legal_term(user_term)
+                
+                st.markdown("#### 📖 Explanation")
+                st.info(explanation.plain_english)
+                
+                st.markdown("#### ⚖️ Legal Definition")
+                st.write(explanation.legal_definition)
+                
+                if explanation.real_world_impact:
+                    st.markdown("#### 🎯 Real-World Impact")
+                    st.write(explanation.real_world_impact)
+                    
+            except Exception as e:
+                st.error(f"Error explaining term: {str(e)}")
+                st.info("💡 For full functionality, complete the Google Cloud RAG setup.")
 
 if __name__ == "__main__":
     main()
