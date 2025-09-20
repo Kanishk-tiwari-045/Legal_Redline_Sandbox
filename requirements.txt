@@ -6,6 +6,7 @@ openpyxl>=3.0.0
 python-dotenv>=0.19.0
 Pillow>=9.0.0
 requests>=2.25.0
+google-cloud
 google-cloud-translate
 google-cloud-documentai
 google-cloud-dlp
