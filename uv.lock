@@ -281,6 +281,21 @@ wheels = [
 ]
 
 [[package]]
+name = "google-cloud-discoveryengine"
+version = "0.13.11"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "google-api-core", extra = ["grpc"] },
+    { name = "google-auth" },
+    { name = "proto-plus" },
+    { name = "protobuf" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/37/b8/cd098a76756bad4537e3deb2dc39b401e89e8f8588ebdb579a2a43b42441/google_cloud_discoveryengine-0.13.11.tar.gz", hash = "sha256:0eb7298b163aaa4a281a389a625fa62d0b418682de788d19ed1f561f21ecac7a", size = 3576982, upload-time = "2025-07-28T16:40:27.014Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/40/b5/18d4380eead101c34070f1801f350f0a29cc0947b418996eaa3770c08cf8/google_cloud_discoveryengine-0.13.11-py3-none-any.whl", hash = "sha256:0d0df371bf8c85a3ddf32048ee6b985da6da623cf66701c19d110426c0105f82", size = 3331486, upload-time = "2025-07-28T16:40:18.743Z" },
+]
+
+[[package]]
 name = "google-cloud-documentai"
 version = "3.6.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1146,6 +1161,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "google-cloud-aiplatform" },
+    { name = "google-cloud-discoveryengine" },
     { name = "google-cloud-documentai" },
     { name = "google-genai" },
     { name = "pymupdf" },
@@ -1158,6 +1174,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "google-cloud-aiplatform", specifier = ">=1.115.0" },
+    { name = "google-cloud-discoveryengine", specifier = ">=0.13.11" },
     { name = "google-cloud-documentai", specifier = ">=3.6.0" },
     { name = "google-genai", specifier = ">=1.30.0" },
     { name = "pymupdf", specifier = ">=1.26.3" },
