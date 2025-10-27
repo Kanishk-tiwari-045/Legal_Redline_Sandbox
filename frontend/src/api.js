@@ -113,6 +113,19 @@ export async function redactDocument(text) {
   return res?.json()
 }
 
+export async function processPrivacy(documentContent, infoTypes, redactionLevel) {
+  const res = await apiCall('/privacy/redact', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ 
+      text: documentContent,
+      info_types: infoTypes,
+      redaction_level: redactionLevel
+    }),
+  })
+  return res?.json()
+}
+
 // Job polling helper
 export function startJobPolling(jobId, onUpdate, interval = 2000) {
   const poll = async () => {
@@ -138,5 +151,5 @@ export function startJobPolling(jobId, onUpdate, interval = 2000) {
 export default { 
   uploadFile, rewriteClause, startChat, explainTerm,
   analyzeClause, translateToPlain, getHistoricalContext, exportReport, 
-  generateDiff, redactDocument, getJobStatus, getAllJobs, startJobPolling
+  generateDiff, redactDocument, processPrivacy, getJobStatus, getAllJobs, startJobPolling
 }

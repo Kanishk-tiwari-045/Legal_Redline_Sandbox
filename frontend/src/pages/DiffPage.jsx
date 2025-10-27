@@ -90,29 +90,7 @@ export default function DiffPage() {
     }
   }
 
-  const exportDiff = () => {
-    if (!diffResults) return
 
-    const exportData = {
-      clause_id: selectedClause,
-      comparison_type: selectedVersion,
-      view_mode: viewMode,
-      generated_at: new Date().toISOString(),
-      original_text: getOriginalClause(selectedClause),
-      comparison_text: selectedVersion === 'all' ? 
-        getClauseVersions(selectedClause) : 
-        getClauseVersions(selectedClause).find(v => v.id === selectedVersion)?.content,
-      diff_results: diffResults
-    }
-
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `diff_${selectedClause}_${Date.now()}.json`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
 
   const renderDiffContent = () => {
     if (!diffResults) return null
@@ -398,14 +376,7 @@ export default function DiffPage() {
                       )}
                     </button>
                     
-                    {diffResults && (
-                      <button 
-                        onClick={exportDiff} 
-                        className="py-3 px-6 bg-gradient-to-r from-green-600 to-teal-600 text-white rounded-lg font-semibold hover:from-green-700 hover:to-teal-700 transition-all duration-200 shadow-lg hover:shadow-xl"
-                      >
-                        💾 Export Diff
-                      </button>
-                    )}
+
                   </div>
 
                   {diffJob && (

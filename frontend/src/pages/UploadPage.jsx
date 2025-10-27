@@ -87,10 +87,18 @@ export default function UploadPage() {
           setUploadJob(job)
           dispatch({ type: 'UPDATE_JOB', payload: job })
           
+          // Handle streaming updates - update state with partial results
+          if (job.result) {
+            if (job.result.document) {
+              dispatch({ type: 'SET_DOCUMENT', payload: job.result.document })
+            }
+            if (job.result.risky_clauses) {
+              dispatch({ type: 'SET_RISKY', payload: job.result.risky_clauses })
+            }
+          }
+          
           if (job.status === 'completed' && job.result) {
             console.log('Job completed with result:', job.result)
-            dispatch({ type: 'SET_DOCUMENT', payload: job.result.document })
-            dispatch({ type: 'SET_RISKY', payload: job.result.risky_clauses })
             
             // Log completion activity
             dispatch({

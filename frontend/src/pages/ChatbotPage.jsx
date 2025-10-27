@@ -68,14 +68,24 @@ export default function ChatbotPageNew() {
     if (isUserTyping.current) return // Never scroll while user is typing
     
     if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth", block: "end" })
+      const container = messagesEndRef.current.closest('.overflow-y-auto')
+      if (container) {
+        container.scrollTop = container.scrollHeight
+      } else {
+        messagesEndRef.current.scrollIntoView({ behavior: "smooth", block: "end" })
+      }
     }
   }
 
   // Force scroll to bottom (for initial load and tab switching)
   const forceScrollToBottom = () => {
     if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth", block: "end" })
+      const container = messagesEndRef.current.closest('.overflow-y-auto')
+      if (container) {
+        container.scrollTop = container.scrollHeight
+      } else {
+        messagesEndRef.current.scrollIntoView({ behavior: "smooth", block: "end" })
+      }
     }
   }
 
@@ -119,6 +129,14 @@ export default function ChatbotPageNew() {
       adjustTextareaHeight()
     }
   }, [currentMessage])
+
+  // Scroll when loading state changes (to show loading indicator and responses)
+  useEffect(() => {
+    if (!isUserTyping.current) {
+      const timeoutId = setTimeout(forceScrollToBottom, 150)
+      return () => clearTimeout(timeoutId)
+    }
+  }, [loading])
 
   const addMessage = (role, content, isGeneral = true) => {
     const message = { role, content, timestamp: new Date() }
@@ -257,10 +275,10 @@ export default function ChatbotPageNew() {
       </div>
 
       {/* Chat Container */}
-      <div className="flex-1 flex flex-col max-w-4xl mx-auto w-full p-6">
+      <div className="flex-1 flex flex-col max-w-4xl mx-auto w-full p-6 min-h-0">
         
         {/* Messages Area */}
-        <div className="flex-1 bg-gray-800/30 backdrop-blur-sm rounded-2xl border border-gray-700 mb-6 flex flex-col min-h-0">
+        <div className="flex-1 bg-gray-800/30 backdrop-blur-sm rounded-2xl border border-gray-700 mb-6 flex flex-col min-h-0 max-h-[70vh]">
           
           {/* Chat Header */}
           <div className="p-4 border-b border-gray-700 flex justify-between items-center">
@@ -306,8 +324,8 @@ export default function ChatbotPageNew() {
               </div>
             ) : (
               currentHistory.map((message, index) => (
-                <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${
+                <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'} w-full`}>
+                  <div className={`max-w-[85%] rounded-2xl px-4 py-3 break-words overflow-hidden ${
                     message.role === 'user'
                       ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white'
                       : 'bg-gray-700 text-white border border-gray-600'
@@ -322,7 +340,7 @@ export default function ChatbotPageNew() {
                     </div>
                     <div className="space-y-1">
                       {message.content.split('\n').map((line, i) => (
-                        <p key={i} className="text-sm leading-relaxed">{line}</p>
+                        <p key={i} className="text-sm leading-relaxed break-words whitespace-pre-wrap">{line}</p>
                       ))}
                     </div>
                   </div>

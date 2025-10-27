@@ -105,6 +105,35 @@ class InMemoryJobQueue:
         job = self.get_job(job_id)
         if job:
             job.progress = progress
+    
+    def update_job_result(self, job_id: str, partial_result: Dict[str, Any]):
+        """Update job with partial results for streaming"""
+        job = self.get_job(job_id)
+        if job:
+            job.result = partial_result
+    
+    def complete_job(self, job_id: str, final_result: Dict[str, Any]):
+        """Mark job as completed with final result"""
+        job = self.get_job(job_id)
+        if job:
+            job.result = final_result
+            job.status = JobStatus.COMPLETED
+            job.completed_at = datetime.utcnow()
+            job.progress = 100
+            # Remove from running tasks if present
+            if job_id in self.running_tasks:
+                del self.running_tasks[job_id]
+    
+    def fail_job(self, job_id: str, error: str):
+        """Mark job as failed with error message"""
+        job = self.get_job(job_id)
+        if job:
+            job.error = error
+            job.status = JobStatus.FAILED
+            job.completed_at = datetime.utcnow()
+            # Remove from running tasks if present
+            if job_id in self.running_tasks:
+                del self.running_tasks[job_id]
 
 # Global job queue instance
 job_queue = InMemoryJobQueue()

@@ -1,7 +1,11 @@
 import os
 import sys
+import logging
 from typing import Optional
 from dotenv import load_dotenv
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 # Add current directory and parent directory to Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -78,14 +82,23 @@ async def upload_document(
 @app.post("/api/rewrite")
 async def rewrite_clause(clause_data: dict):
     """Start background clause rewriting"""
+    logger.info(f"Rewrite request received: {clause_data.keys()}")
+    
+    # Debug: Check clause service status
+    logger.info(f"ClauseService initialization status: {clause_service.clause_rewriter is not None}")
+    
     job_id = job_queue.create_job(
         job_type="clause_rewriting",
         user_id="session_user",
         data=clause_data
     )
     
+    logger.info(f"Created rewrite job: {job_id}")
+    
     # Start background processing
     await job_queue.start_job(job_id, clause_service.rewrite_clause_async)
+    
+    logger.info(f"Started rewrite job: {job_id}")
     
     return {"job_id": job_id, "status": "processing"}
 

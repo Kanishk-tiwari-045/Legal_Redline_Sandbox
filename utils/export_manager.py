@@ -42,65 +42,64 @@ class ExportManager:
             """
     
     def generate_pdf_report(self, report_data: Dict[str, Any], options: Dict[str, Any]) -> bytes:
-        """Generate a PDF-formatted HTML report"""
+        """Generate an actual PDF document from report data"""
         
         try:
-            # Generate basic HTML content first
-            html_content = self.generate_html_report(report_data, options)
+            import fitz  # PyMuPDF
+            import tempfile
+            import os
             
-            # Add PDF-specific styling and structure
-            pdf_html = f"""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Legal Redline Report</title>
-    <style>
-        @page {{ margin: 1in; }}
-        body {{ 
-            font-family: Arial, sans-serif; 
-            line-height: 1.6; 
-            color: #333;
-            max-width: none;
-            margin: 0;
-            padding: 0;
-        }}
-        .page-break {{ page-break-before: always; }}
-        .section {{ margin-bottom: 30px; }}
-        .clause-box {{ 
-            border: 1px solid #ddd; 
-            padding: 15px; 
-            margin: 10px 0; 
-            border-radius: 5px;
-        }}
-        .metrics {{ display: block; }}
-        .metric {{ 
-            display: inline-block; 
-            margin: 10px; 
-            text-align: center;
-            border: 1px solid #ccc;
-            padding: 10px;
-            border-radius: 5px;
-        }}
-    </style>
-</head>
-<body>
-    {html_content}
-</body>
-</html>"""
+            # Create a new PDF document
+            pdf_doc = fitz.open()  # Create new empty PDF
             
-            return pdf_html.encode('utf-8')
+            # Get document info
+            document = report_data.get('document', {})
+            risky_clauses = report_data.get('risky_clauses', [])
+            rewrite_history = report_data.get('rewrite_history', [])
+            
+            # Generate content sections
+            content_sections = self._generate_pdf_content_sections(document, risky_clauses, rewrite_history, options)
+            
+            # Create pages for each section
+            for section in content_sections:
+                page = pdf_doc.new_page()  # Standard A4 page
+                
+                # Insert text content
+                text_rect = fitz.Rect(72, 72, 523, 770)  # 1 inch margins
+                
+                # Insert title if present
+                if section.get('title'):
+                    title_rect = fitz.Rect(72, 72, 523, 100)
+                    page.insert_text(title_rect.tl, section['title'], 
+                                   fontsize=16, fontname="helv", color=(0, 0, 0))
+                    text_rect = fitz.Rect(72, 110, 523, 770)  # Adjust for title
+                
+                # Insert main content
+                if section.get('content'):
+                    page.insert_text(text_rect.tl, section['content'], 
+                                   fontsize=11, fontname="helv", color=(0, 0, 0))
+            
+            # Convert to bytes
+            pdf_bytes = pdf_doc.tobytes()
+            pdf_doc.close()
+            
+            return pdf_bytes
             
         except Exception as e:
-            # Return a simple error document
-            error_html = f"""<!DOCTYPE html>
-<html>
-<head><title>PDF Generation Error</title></head>
-<body>
-    <h1>PDF Generation Error</h1>
-    <p>Error: {html.escape(str(e))}</p>
-</body>
-</html>"""
-            return error_html.encode('utf-8')
+            # Fallback: Create a simple error PDF
+            try:
+                import fitz
+                error_pdf = fitz.open()
+                page = error_pdf.new_page()
+                text_rect = fitz.Rect(72, 72, 523, 770)
+                error_text = f"PDF Generation Error\n\nThere was an error creating the PDF report:\n{str(e)}\n\nPlease try generating an HTML report instead or contact support."
+                page.insert_text(text_rect.tl, error_text, fontsize=12, fontname="helv", color=(0, 0, 0))
+                error_bytes = error_pdf.tobytes()
+                error_pdf.close()
+                return error_bytes
+            except:
+                # Ultimate fallback: return minimal PDF-like content
+                return b"%PDF-1.4\nERROR: Could not generate PDF"
     
     def _generate_html_header(self) -> str:
         """Generate HTML header with styling"""
@@ -488,3 +487,99 @@ class ExportManager:
         }
         
         return export_data
+    
+    def _generate_pdf_content_sections(self, document: Dict, risky_clauses: List, rewrite_history: List, options: Dict) -> List[Dict]:
+        """Generate content sections for PDF creation"""
+        sections = []
+        
+        # Title page
+        title_section = {
+            'title': 'Legal Redline Report',
+            'content': f"""
+Document: {document.get('filename', 'Unknown Document')}
+Generated: {datetime.now().strftime('%B %d, %Y at %I:%M %p')}
+Total Pages: {document.get('total_pages', 'Unknown')}
+Total Clauses Analyzed: {len(risky_clauses)}
+
+Report Summary:
+This report contains analysis of contract clauses, risk assessments, and suggested improvements for legal documents.
+"""
+        }
+        sections.append(title_section)
+        
+        # Executive Summary
+        high_risk_count = len([c for c in risky_clauses if c.get('risk_score', 0) >= 70])
+        medium_risk_count = len([c for c in risky_clauses if 40 <= c.get('risk_score', 0) < 70])
+        low_risk_count = len([c for c in risky_clauses if c.get('risk_score', 0) < 40])
+        
+        summary_section = {
+            'title': 'Executive Summary',
+            'content': f"""
+Risk Assessment Overview:
+• High Risk Clauses: {high_risk_count}
+• Medium Risk Clauses: {medium_risk_count}  
+• Low Risk Clauses: {low_risk_count}
+
+Key Findings:
+The document analysis identified {len(risky_clauses)} clauses requiring attention. Priority should be given to high-risk clauses that may expose the organization to significant legal or financial liability.
+"""
+        }
+        sections.append(summary_section)
+        
+        # Risk Analysis Details
+        if risky_clauses:
+            for i, clause in enumerate(risky_clauses[:10], 1):  # Limit to first 10 clauses
+                clause_content = f"""
+Clause #{i}: {clause.get('title', 'Untitled Clause')}
+Risk Score: {clause.get('risk_score', 'Unknown')}/100
+Page: {clause.get('page', 'Unknown')}
+
+Original Text:
+{clause.get('text', 'No text available')[:500]}{'...' if len(clause.get('text', '')) > 500 else ''}
+
+Risk Factors:
+"""
+                
+                # Add risk tags if available
+                if clause.get('risk_analysis', {}).get('tags'):
+                    for tag in clause['risk_analysis']['tags']:
+                        clause_content += f"• {tag.replace('_', ' ').title()}\n"
+                
+                # Add rewrite suggestion if available
+                rewrite = next((r for r in rewrite_history if r.get('clause_id') == clause.get('clause_id')), None)
+                if rewrite:
+                    clause_content += f"\nSuggested Improvement:\n{rewrite.get('rewrite', 'No rewrite available')[:300]}{'...' if len(rewrite.get('rewrite', '')) > 300 else ''}"
+                
+                sections.append({
+                    'title': f'Clause Analysis #{i}',
+                    'content': clause_content
+                })
+        
+        # Recommendations
+        recommendations_section = {
+            'title': 'Recommendations',
+            'content': f"""
+Based on the analysis of {len(risky_clauses)} clauses, we recommend:
+
+1. Priority Actions:
+   • Review all high-risk clauses immediately
+   • Consider legal counsel for clauses with scores above 80
+   • Implement suggested rewrites where appropriate
+
+2. Risk Mitigation:
+   • Establish clear notice periods (30+ days recommended)
+   • Include jurisdiction and governing law clauses
+   • Define termination procedures clearly
+   • Limit liability exposure where possible
+
+3. Contract Management:
+   • Regular review cycles for all agreements
+   • Standardized clause libraries for common terms
+   • Legal team approval for high-risk provisions
+
+This analysis was generated using AI-powered contract review tools. Always consult with qualified legal counsel before making contract modifications.
+"""
+        }
+        sections.append(recommendations_section)
+        
+        return sections

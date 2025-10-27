@@ -17,22 +17,20 @@ export default function App() {
   const handleLeaveSession = () => {
     // Show confirmation dialog
     const confirmed = window.confirm(
-      '⚠️ Are you sure you want to leave the session?\n\nThis will:\n• Clear all uploaded documents\n• Reset analysis results\n• Clear chat history\n• Remove all rewrite history\n\nThis action cannot be undone.'
+      '⚠️ Are you sure you want to leave the session?\n\nThis will:\n• Clear all uploaded documents\n• Reset analysis results\n• Clear chat history\n• Remove all rewrite history\n• Permanently delete all saved data\n\nThis action cannot be undone.'
     )
     
     if (confirmed) {
-      // Clear any potential localStorage/sessionStorage
-      localStorage.clear()
-      sessionStorage.clear()
-      
-      // Reset the session state
+      // Reset the session state (this will also clear localStorage via enhancedDispatch)
       dispatch({ type: 'RESET_SESSION' })
       
       // Navigate to upload page
       navigate('/')
       
-      // Force a page reload to ensure complete reset
-      window.location.reload()
+      // Small delay to ensure state is processed, then reload
+      setTimeout(() => {
+        window.location.reload()
+      }, 100)
     }
   }
   

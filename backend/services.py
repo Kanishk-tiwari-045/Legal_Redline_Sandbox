@@ -3,8 +3,7 @@ import sys
 import tempfile
 import asyncio
 from typing import Optional, Dict, Any
-from fastapi import Depends, HTTPException, status, UploadFile
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import HTTPException, status, UploadFile
 
 # Ensure root path is on sys.path so we can import the existing utils package
 ROOT = os.path.dirname(os.path.dirname(__file__))
@@ -22,10 +21,7 @@ try:
     from utils.privacy_processor import PrivacyProcessor
 except ImportError:
     PrivacyProcessor = None
-from auth import verify_token, get_user_by_username, User
 from job_queue import job_queue, Job
-
-security = HTTPBearer()
 
 class DocumentService:
     def __init__(self):
@@ -49,21 +45,71 @@ class DocumentService:
             
             job_queue.update_progress(job.job_id, 60)
             
-            # Analyze risks
-            risky_clauses = self.risk_detector.analyze_document(document_data)
-            
-            job_queue.update_progress(job.job_id, 90)
-            
-            return {
+            # Return document data immediately, start risk analysis streaming
+            result = {
                 'document': document_data,
-                'risky_clauses': risky_clauses,
+                'risky_clauses': [],
+                'streaming_complete': False
             }
+            
+            # Start streaming risk analysis in background
+            asyncio.create_task(self._stream_risk_analysis(job.job_id, document_data))
+            
+            job_queue.update_progress(job.job_id, 70)
+            
+            return result
         finally:
             # Clean up temp file
             try:
                 os.unlink(file_path)
             except Exception:
                 pass
+
+    async def _stream_risk_analysis(self, job_id: str, document_data: Dict[str, Any]):
+        """Stream risk analysis results as each clause is processed"""
+        try:
+            risky_clauses = []
+            total_clauses = len(document_data['clauses'])
+            
+            for i, clause in enumerate(document_data['clauses']):
+                # Analyze this clause
+                risk_analysis = self.risk_detector._analyze_clause(clause)
+                
+                if risk_analysis['score'] >= 1:
+                    clause_with_risk = clause.copy()
+                    clause_with_risk['risk_analysis'] = risk_analysis
+                    risky_clauses.append(clause_with_risk)
+                    
+                    # Update job with partial results
+                    partial_result = {
+                        'document': document_data,
+                        'risky_clauses': risky_clauses,
+                        'streaming_complete': False,
+                        'processed_clauses': i + 1,
+                        'total_clauses': total_clauses
+                    }
+                    job_queue.update_job_result(job_id, partial_result)
+                
+                # Update progress
+                progress = 70 + int((i + 1) / total_clauses * 20)  # 70-90%
+                job_queue.update_progress(job_id, progress)
+            
+            # Sort by risk score and finalize
+            risky_clauses.sort(key=lambda x: x['risk_analysis']['score'], reverse=True)
+            
+            final_result = {
+                'document': document_data,
+                'risky_clauses': risky_clauses,
+                'streaming_complete': True,
+                'processed_clauses': total_clauses,
+                'total_clauses': total_clauses
+            }
+            
+            # Mark job as completed
+            job_queue.complete_job(job_id, final_result)
+            
+        except Exception as e:
+            job_queue.fail_job(job_id, str(e))
 
 class ClauseService:
     def __init__(self):
@@ -75,25 +121,108 @@ class ClauseService:
         
     async def rewrite_clause_async(self, job: Job) -> Dict[str, Any]:
         """Async wrapper for clause rewriting"""
-        if not self.clause_rewriter:
-            raise ValueError("ClauseRewriter not configured (missing GEMINI_API_KEY)")
+        try:
+            if not self.clause_rewriter:
+                return {
+                    'rewrite': 'Unable to generate rewrite: GEMINI_API_KEY not configured',
+                    'rationale': 'The Gemini API key is not set in environment variables. Please configure GEMINI_API_KEY to enable clause rewriting.',
+                    'fallback_levels': ['API key configuration required'],
+                    'risk_reduction': 'Cannot assess - API not available',
+                    'citation': 'Configuration error',
+                    'error': True,
+                    'error_details': 'GEMINI_API_KEY environment variable missing'
+                }
             
-        clause = job.data.get("clause")
-        controls = job.data.get("controls", {})
-        
-        job_queue.update_progress(job.job_id, 20)
-        
-        # Run in executor to avoid blocking
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            None, 
-            self.clause_rewriter.suggest_rewrite, 
-            clause, 
-            controls
-        )
-        
-        job_queue.update_progress(job.job_id, 90)
-        return result
+            clause = job.data.get("clause")
+            controls = job.data.get("controls", {})
+            
+            if not clause:
+                return {
+                    'rewrite': 'Unable to generate rewrite: No clause provided',
+                    'rationale': 'The clause data is missing or invalid',
+                    'fallback_levels': ['Valid clause data required'],
+                    'risk_reduction': 'Cannot assess - no clause data',
+                    'citation': 'Invalid input',
+                    'error': True,
+                    'error_details': 'Missing clause data in request'
+                }
+            
+            job_queue.update_progress(job.job_id, 20)
+            
+            # Run in executor to avoid blocking
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None, 
+                self.clause_rewriter.suggest_rewrite, 
+                clause, 
+                controls
+            )
+            
+            job_queue.update_progress(job.job_id, 90)
+            
+            # Ensure the result has the expected structure
+            if isinstance(result, dict) and 'rewrite' in result:
+                return result
+            else:
+                return {
+                    'rewrite': 'Unable to generate valid rewrite response',
+                    'rationale': 'The AI service returned an unexpected response format',
+                    'fallback_levels': ['Please try again with a different clause'],
+                    'risk_reduction': 'Cannot assess - invalid response',
+                    'citation': 'API response error',
+                    'error': True,
+                    'error_details': f'Unexpected response format: {str(result)}'
+                }
+                
+        except Exception as e:
+            error_str = str(e)
+            
+            # Handle specific API errors with user-friendly messages
+            if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                return {
+                    'rewrite': 'Rate limit exceeded - Please try again in a few minutes',
+                    'rationale': 'The AI service is currently experiencing high demand. Please wait a few minutes before trying again.',
+                    'fallback_levels': [
+                        'Wait 2-3 minutes and retry',
+                        'Try during off-peak hours',
+                        'Contact support if problem persists'
+                    ],
+                    'risk_reduction': 'Cannot assess - API rate limited',
+                    'citation': f"Original: {job.data.get('clause', {}).get('title', 'Unknown')}",
+                    'error': True,
+                    'error_type': 'rate_limit',
+                    'error_details': 'API rate limit exceeded (429)'
+                }
+            elif "401" in error_str or "PERMISSION_DENIED" in error_str:
+                return {
+                    'rewrite': 'API authentication failed - Please check configuration',
+                    'rationale': 'The API key may be invalid or expired. Please check the server configuration.',
+                    'fallback_levels': [
+                        'Verify API key is valid',
+                        'Check API key permissions',
+                        'Contact administrator'
+                    ],
+                    'risk_reduction': 'Cannot assess - authentication error',
+                    'citation': f"Original: {job.data.get('clause', {}).get('title', 'Unknown')}",
+                    'error': True,
+                    'error_type': 'auth_error',
+                    'error_details': 'API authentication failed'
+                }
+            else:
+                return {
+                    'rewrite': f'Service temporarily unavailable: {str(e)[:100]}...',
+                    'rationale': 'An unexpected error occurred. This is usually temporary - please try again in a few minutes.',
+                    'fallback_levels': [
+                        'Try again in 2-3 minutes',
+                        'Check internet connection',
+                        'Contact support if problem continues'
+                    ],
+                    'risk_reduction': 'Cannot assess - service error',
+                    'citation': f"Original: {job.data.get('clause', {}).get('title', 'Unknown')}",
+                    'error': True,
+                    'error_type': 'service_error',
+                    'error_details': str(e)
+                }
 
 class ChatService:
     def __init__(self):
@@ -276,16 +405,16 @@ class DiffService:
         job_queue.update_progress(job.job_id, 20)
         
         loop = asyncio.get_event_loop()
-        html_diff = await loop.run_in_executor(
+        structured_diff = await loop.run_in_executor(
             None,
-            self.diff_generator.generate_html_diff,
+            self.diff_generator.generate_structured_diff,
             original,
             rewritten
         )
         
         job_queue.update_progress(job.job_id, 90)
         
-        return {"html_diff": html_diff}
+        return structured_diff
 
 class PrivacyService:
     def __init__(self):
@@ -327,36 +456,6 @@ explainer_service = ExplainerService()
 export_service = ExportService()
 diff_service = DiffService()
 privacy_service = PrivacyService()
-
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> User:
-    """Dependency to get current authenticated user"""
-    token = credentials.credentials
-    payload = verify_token(token)
-    
-    if payload is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    username: str = payload.get("sub")
-    if username is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    user = get_user_by_username(username)
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    return user
 
 async def save_upload_file(upload_file: UploadFile) -> str:
     """Save uploaded file to temp location and return path"""

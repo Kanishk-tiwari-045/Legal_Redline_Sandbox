@@ -33,16 +33,35 @@ export default function SandboxPage() {
       if (res.job_id) {
         // Poll for job completion
         const cleanup = api.startJobPolling(res.job_id, (job) => {
+          console.log('Rewrite job update:', job)
+          
           if (job.status === 'completed' && job.result) {
-            setRewrite(job.result.rewrite || JSON.stringify(job.result))
-            dispatch({ 
-              type: 'ADD_REWRITE', 
-              clauseId: clause.clause_id || `clause_${selectedIdx}`, 
-              payload: job.result,
-              clauseTitle: clause.title 
-            })
+            // Check if result contains an error
+            if (job.result.error) {
+              const errorType = job.result.error_type || 'unknown';
+              let userMessage = job.result.rewrite || 'An error occurred during rewriting.';
+              
+              // Add helpful context for common errors
+              if (errorType === 'rate_limit') {
+                userMessage += '\n\n💡 Tip: The AI service is experiencing high demand. Try again in 2-3 minutes.';
+              } else if (errorType === 'auth_error') {
+                userMessage += '\n\n⚙️ This appears to be a configuration issue. Please contact support.';
+              }
+              
+              setRewrite(userMessage);
+            } else {
+              const rewriteText = job.result.rewritten_clause || job.result.rewrite || JSON.stringify(job.result, null, 2)
+              setRewrite(rewriteText)
+              dispatch({ 
+                type: 'ADD_REWRITE', 
+                clauseId: clause.clause_id || `clause_${selectedIdx}`, 
+                payload: job.result,
+                clauseTitle: clause.title 
+              })
+            }
             setLoading(false)
           } else if (job.status === 'failed') {
+            console.error('Rewrite job failed:', job.error)
             setRewrite(`Error: ${job.error || 'Rewrite failed'}`)
             setLoading(false)
           }
