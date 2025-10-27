@@ -522,18 +522,21 @@ class ContextualExplainer:
         # Remove duplicates and return
         return list(set(terms))
     
-    # Fallback methods for when GCP services are unavailable
+    # Fallback methods for when GCP services are unavailable - use Gemini AI instead
     def _fallback_legal_explanation(self, term: str) -> LegalExplanation:
-        """Fallback explanation when RAG is unavailable"""
-        return LegalExplanation(
-            term=term,
-            plain_english=f"The term '{term}' is a legal concept that may have specific implications in contracts.",
-            legal_definition="Legal definition not available without RAG knowledge base.",
-            real_world_impact="Real-world impact analysis requires access to case law database.",
-            alternatives=[],
-            risk_level="Medium",
-            citations=[]
-        )
+        """Fallback explanation using Gemini AI when RAG is unavailable"""
+        try:
+            # Try to use Gemini API for explanation
+            api_key = os.environ.get("GEMINI_API_KEY")
+            if api_key:
+                return self._gemini_explain_term(term)
+            else:
+                logger.warning("No GEMINI_API_KEY found, using basic fallback")
+        except Exception as e:
+            logger.error(f"Gemini fallback failed for term '{term}': {e}")
+        
+        # Basic fallback with built-in legal knowledge
+        return self._basic_legal_knowledge(term)
     
     def _fallback_clause_analysis(self, clause_text: str) -> ClauseAnalysis:
         """Fallback analysis when RAG is unavailable"""
@@ -560,6 +563,187 @@ class ContextualExplainer:
     def _fallback_historical_context(self, clause_text: str) -> str:
         """Fallback historical context when RAG is unavailable"""
         return "Historical context analysis requires access to case law database. Please configure Google Cloud Discovery Engine for full functionality."
+    
+    def _gemini_explain_term(self, term: str) -> LegalExplanation:
+        """Use Gemini AI to explain legal terms when RAG is unavailable"""
+        try:
+            from google import genai
+            from google.genai import types
+            
+            api_key = os.environ.get("GEMINI_API_KEY")
+            client = genai.Client(api_key=api_key)
+            model_name = "gemini-2.5-pro"
+            
+            system_prompt = """You are an expert legal analyst and contract attorney. 
+Your role is to explain legal terms in plain English while providing accurate legal definitions.
+
+CRITICAL REQUIREMENTS:
+1. Provide clear, accurate legal definitions
+2. Explain real-world implications in plain English
+3. Suggest alternative terms when applicable
+4. Assess risk levels objectively
+5. Use professional, accessible language
+6. Focus on contract law context
+
+Always respond with valid JSON in this exact format:
+{
+    "term": "the term being explained",
+    "plain_english": "Clear explanation in everyday language",
+    "legal_definition": "Formal legal definition with context",
+    "real_world_impact": "What this means in practice for the parties",
+    "alternatives": ["alternative term 1", "alternative term 2", "alternative term 3"],
+    "risk_level": "Low|Medium|High",
+    "citations": ["general legal principle", "common usage"]
+}"""
+            
+            user_prompt = f"""
+Please explain the legal term "{term}" in the context of contract law.
+
+Provide:
+1. A plain English explanation that anyone can understand
+2. The formal legal definition with contract law context  
+3. Real-world impact - what this means for the parties involved
+4. 2-3 alternative terms or phrases that could be used instead
+5. Risk level assessment (Low/Medium/High) for typical contracts
+6. General citations or references (no specific case law needed)
+
+Term to explain: "{term}"
+
+Focus on practical implications and make the explanation accessible to non-lawyers while maintaining legal accuracy."""
+            
+            response = client.models.generate_content(
+                model=model_name,
+                contents=[
+                    types.Content(role="user", parts=[types.Part(text=user_prompt)])
+                ],
+                config=types.GenerateContentConfig(
+                    system_instruction=system_prompt,
+                    response_mime_type="application/json",
+                    temperature=0.3,
+                    max_output_tokens=1000
+                ),
+            )
+            
+            if not response.text:
+                raise Exception("Empty response from Gemini API")
+            
+            # Parse the JSON response
+            try:
+                result = json.loads(response.text)
+                
+                return LegalExplanation(
+                    term=result.get('term', term),
+                    plain_english=result.get('plain_english', 'No explanation available'),
+                    legal_definition=result.get('legal_definition', 'No definition available'),
+                    real_world_impact=result.get('real_world_impact', 'No impact analysis available'),
+                    alternatives=result.get('alternatives', []),
+                    risk_level=result.get('risk_level', 'Medium'),
+                    citations=result.get('citations', ['AI-generated explanation'])
+                )
+                
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse Gemini response for term '{term}': {e}")
+                # Return structured response with the raw text
+                return LegalExplanation(
+                    term=term,
+                    plain_english=response.text[:300] + "..." if len(response.text) > 300 else response.text,
+                    legal_definition="AI explanation (JSON parsing failed)",
+                    real_world_impact="See plain English explanation above",
+                    alternatives=[],
+                    risk_level="Medium",
+                    citations=["AI-generated explanation with parsing error"]
+                )
+                
+        except Exception as e:
+            logger.error(f"Gemini API error for term '{term}': {e}")
+            raise e  # Re-raise to trigger basic fallback
+    
+    def _basic_legal_knowledge(self, term: str) -> LegalExplanation:
+        """Basic legal knowledge fallback for common terms"""
+        term_lower = term.lower().strip()
+        
+        # Common legal terms with basic explanations
+        basic_knowledge = {
+            'force majeure': {
+                'plain_english': 'Unforeseeable circumstances that prevent a party from fulfilling a contract, like natural disasters or wars.',
+                'legal_definition': 'A clause that frees parties from liability when extraordinary circumstances beyond their control prevent them from fulfilling their obligations.',
+                'real_world_impact': 'Allows parties to suspend or terminate contracts during major disruptions without penalty.',
+                'alternatives': ['Act of God clause', 'Impossibility clause', 'Frustration of purpose'],
+                'risk_level': 'Medium'
+            },
+            'liquidated damages': {
+                'plain_english': 'A predetermined amount of money that must be paid if someone breaks the contract.',
+                'legal_definition': 'A contractual provision that establishes a specific monetary penalty for breach, agreed upon in advance.',
+                'real_world_impact': 'Provides certainty about consequences and avoids lengthy disputes over actual damages.',
+                'alternatives': ['Penalty clause', 'Stipulated damages', 'Pre-estimated damages'],
+                'risk_level': 'High'
+            },
+            'indemnification': {
+                'plain_english': 'A promise to cover someone else\'s losses and legal costs if they get in trouble because of you.',
+                'legal_definition': 'A contractual obligation where one party agrees to compensate another for harm, loss, or damage.',
+                'real_world_impact': 'Shifts financial risk and legal responsibility from one party to another.',
+                'alternatives': ['Hold harmless clause', 'Liability assumption', 'Defense obligation'],
+                'risk_level': 'High'
+            },
+            'breach': {
+                'plain_english': 'Breaking the terms of a contract by not doing what you promised to do.',
+                'legal_definition': 'The failure of a party to perform any duty or obligation specified in a contract.',
+                'real_world_impact': 'Can lead to lawsuits, financial penalties, and contract termination.',
+                'alternatives': ['Default', 'Violation', 'Non-performance'],
+                'risk_level': 'High'
+            },
+            'termination': {
+                'plain_english': 'Ending a contract before its natural expiration date.',
+                'legal_definition': 'The legal ending of a contract by agreement, breach, or operation of law.',
+                'real_world_impact': 'Ends all future obligations but may trigger penalties or require final settlements.',
+                'alternatives': ['Cancellation', 'Dissolution', 'Expiration'],
+                'risk_level': 'Medium'
+            },
+            'warranty': {
+                'plain_english': 'A promise that certain facts about a product or service are true.',
+                'legal_definition': 'A contractual assurance that certain conditions or facts are or will remain true.',
+                'real_world_impact': 'Creates liability if the promised conditions turn out to be false.',
+                'alternatives': ['Guarantee', 'Representation', 'Assurance'],
+                'risk_level': 'Medium'
+            },
+            'jurisdiction': {
+                'plain_english': 'Which court system has the authority to resolve disputes about this contract.',
+                'legal_definition': 'The legal authority of a court to hear and decide a case or controversy.',
+                'real_world_impact': 'Determines where you must go to court and which laws will apply.',
+                'alternatives': ['Venue clause', 'Forum selection', 'Governing law'],
+                'risk_level': 'Low'
+            },
+            'arbitration': {
+                'plain_english': 'Resolving disputes through a private judge instead of going to court.',
+                'legal_definition': 'A method of dispute resolution where parties agree to submit their case to a neutral arbitrator.',
+                'real_world_impact': 'Usually faster and more private than court, but limits appeal options.',
+                'alternatives': ['Mediation', 'Alternative dispute resolution', 'Binding arbitration'],
+                'risk_level': 'Medium'
+            }
+        }
+        
+        if term_lower in basic_knowledge:
+            info = basic_knowledge[term_lower]
+            return LegalExplanation(
+                term=term,
+                plain_english=info['plain_english'],
+                legal_definition=info['legal_definition'],
+                real_world_impact=info['real_world_impact'],
+                alternatives=info['alternatives'],
+                risk_level=info['risk_level'],
+                citations=['Built-in legal knowledge base']
+            )
+        else:
+            # Ultimate fallback for unknown terms
+            return LegalExplanation(
+                term=term,
+                plain_english=f"'{term}' is a legal concept that may have specific implications in contracts. For a detailed explanation, please try again when AI services are available.",
+                legal_definition="Detailed legal definition requires AI analysis or legal research.",
+                real_world_impact="Impact analysis requires access to legal databases or AI services.",
+                alternatives=[],
+                risk_level="Medium",
+                citations=["Basic fallback - detailed analysis unavailable"]
+            )
 
 # Utility function for easy integration
 def create_contextual_explainer() -> ContextualExplainer:

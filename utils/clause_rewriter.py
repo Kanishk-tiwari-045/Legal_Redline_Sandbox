@@ -80,19 +80,35 @@ Risk Factors: {', '.join(clause['risk_analysis']['tags'])}
 
 **AVOID:** Any programming code, syntax errors, or technical formatting issues."""
 
-            # Make API call to Gemini
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=[
-                    types.Content(role="user", parts=[types.Part(text=user_prompt)])
-                ],
-                config=types.GenerateContentConfig(
-                    system_instruction=system_prompt,
-                    response_mime_type="application/json",
-                    temperature=0.3,  # Lower temperature for more consistent legal writing
-                    max_output_tokens=2000
-                ),
-            )
+            # Make API call to Gemini with retry logic for rate limits
+            max_retries = 2
+            retry_delay = 2  # seconds
+            
+            for attempt in range(max_retries + 1):
+                try:
+                    response = self.client.models.generate_content(
+                        model=self.model_name,
+                        contents=[
+                            types.Content(role="user", parts=[types.Part(text=user_prompt)])
+                        ],
+                        config=types.GenerateContentConfig(
+                            system_instruction=system_prompt,
+                            response_mime_type="application/json",
+                            temperature=0.3,  # Lower temperature for more consistent legal writing
+                            max_output_tokens=2000
+                        ),
+                    )
+                    break  # Success, exit retry loop
+                    
+                except Exception as e:
+                    if "429" in str(e) and attempt < max_retries:
+                        # Rate limit hit, wait and retry
+                        import time
+                        time.sleep(retry_delay * (attempt + 1))  # Exponential backoff
+                        continue
+                    else:
+                        # Either not a rate limit error, or we've exhausted retries
+                        raise e
             
             if not response.text:
                 raise Exception("Empty response from Gemini API")
