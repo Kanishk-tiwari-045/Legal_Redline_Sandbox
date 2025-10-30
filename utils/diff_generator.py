@@ -218,3 +218,186 @@ class DiffGenerator:
                 ])
         
         return changes
+    
+    def generate_structured_diff(self, original: str, rewritten: str) -> Dict[str, Any]:
+        """Generate structured diff data for frontend display"""
+        
+        # Split into lines for processing
+        original_lines = original.splitlines()
+        rewritten_lines = rewritten.splitlines()
+        
+        # Create sequence matcher
+        matcher = difflib.SequenceMatcher(None, original_lines, rewritten_lines)
+        
+        # Initialize results structure
+        result = {
+            'original_lines': [],
+            'modified_lines': [],
+            'unified_diff': [],
+            'change_blocks': [],
+            'stats': {
+                'additions': 0,
+                'deletions': 0,
+                'modifications': 0,
+                'total_changes': 0
+            },
+            'html_diff': self.generate_html_diff(original, rewritten)
+        }
+        
+        original_line_num = 1
+        modified_line_num = 1
+        
+        for opcode, a1, a2, b1, b2 in matcher.get_opcodes():
+            if opcode == 'equal':
+                # Context lines - same in both
+                for i in range(a1, a2):
+                    original_content = original_lines[i] if i < len(original_lines) else ''
+                    result['original_lines'].append({
+                        'line_number': original_line_num,
+                        'content': original_content,
+                        'type': 'context'
+                    })
+                    original_line_num += 1
+                
+                for i in range(b1, b2):
+                    modified_content = rewritten_lines[i] if i < len(rewritten_lines) else ''
+                    result['modified_lines'].append({
+                        'line_number': modified_line_num,
+                        'content': modified_content,
+                        'type': 'context'
+                    })
+                    modified_line_num += 1
+                    
+                    # Add to unified diff too
+                    result['unified_diff'].append({
+                        'old_line_number': original_line_num - 1,
+                        'new_line_number': modified_line_num - 1,
+                        'content': modified_content,
+                        'type': 'context',
+                        'prefix': ' '
+                    })
+            
+            elif opcode == 'delete':
+                # Lines removed from original
+                change_block = {
+                    'type': 'deletion',
+                    'original_lines': [],
+                    'modified_lines': [],
+                    'start_line': original_line_num
+                }
+                
+                for i in range(a1, a2):
+                    original_content = original_lines[i] if i < len(original_lines) else ''
+                    result['original_lines'].append({
+                        'line_number': original_line_num,
+                        'content': original_content,
+                        'type': 'removed'
+                    })
+                    change_block['original_lines'].append(original_content)
+                    
+                    # Add to unified diff
+                    result['unified_diff'].append({
+                        'old_line_number': original_line_num,
+                        'new_line_number': None,
+                        'content': original_content,
+                        'type': 'removed',
+                        'prefix': '-'
+                    })
+                    
+                    original_line_num += 1
+                    result['stats']['deletions'] += 1
+                
+                result['change_blocks'].append(change_block)
+            
+            elif opcode == 'insert':
+                # Lines added to rewritten
+                change_block = {
+                    'type': 'addition',
+                    'original_lines': [],
+                    'modified_lines': [],
+                    'start_line': modified_line_num
+                }
+                
+                for i in range(b1, b2):
+                    modified_content = rewritten_lines[i] if i < len(rewritten_lines) else ''
+                    result['modified_lines'].append({
+                        'line_number': modified_line_num,
+                        'content': modified_content,
+                        'type': 'added'
+                    })
+                    change_block['modified_lines'].append(modified_content)
+                    
+                    # Add to unified diff
+                    result['unified_diff'].append({
+                        'old_line_number': None,
+                        'new_line_number': modified_line_num,
+                        'content': modified_content,
+                        'type': 'added',
+                        'prefix': '+'
+                    })
+                    
+                    modified_line_num += 1
+                    result['stats']['additions'] += 1
+                
+                result['change_blocks'].append(change_block)
+            
+            elif opcode == 'replace':
+                # Lines changed
+                change_block = {
+                    'type': 'modification',
+                    'original_lines': [],
+                    'modified_lines': [],
+                    'start_line': original_line_num
+                }
+                
+                # Process removed lines
+                for i in range(a1, a2):
+                    original_content = original_lines[i] if i < len(original_lines) else ''
+                    result['original_lines'].append({
+                        'line_number': original_line_num,
+                        'content': original_content,
+                        'type': 'removed'
+                    })
+                    change_block['original_lines'].append(original_content)
+                    
+                    result['unified_diff'].append({
+                        'old_line_number': original_line_num,
+                        'new_line_number': None,
+                        'content': original_content,
+                        'type': 'removed',
+                        'prefix': '-'
+                    })
+                    
+                    original_line_num += 1
+                
+                # Process added lines
+                for i in range(b1, b2):
+                    modified_content = rewritten_lines[i] if i < len(rewritten_lines) else ''
+                    result['modified_lines'].append({
+                        'line_number': modified_line_num,
+                        'content': modified_content,
+                        'type': 'added'
+                    })
+                    change_block['modified_lines'].append(modified_content)
+                    
+                    result['unified_diff'].append({
+                        'old_line_number': None,
+                        'new_line_number': modified_line_num,
+                        'content': modified_content,
+                        'type': 'added',
+                        'prefix': '+'
+                    })
+                    
+                    modified_line_num += 1
+                
+                result['stats']['modifications'] += max(a2 - a1, b2 - b1)
+                result['change_blocks'].append(change_block)
+        
+        # Calculate total changes
+        result['stats']['total_changes'] = (
+            result['stats']['additions'] + 
+            result['stats']['deletions'] + 
+            result['stats']['modifications']
+        )
+        
+        return result
