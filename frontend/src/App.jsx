@@ -9,6 +9,8 @@ import ChatbotPage from './pages/ChatbotPage'
 import ExportPage from './pages/ExportPage'
 import PrivacyPage from './pages/PrivacyPage'
 import DiffPage from './pages/DiffPage'
+import { ToastContainer } from 'react-toastify'
+import 'react-toastify/dist/ReactToastify.css'
 
 export default function App() {
   const { state, dispatch } = useAppState()
@@ -36,6 +38,21 @@ export default function App() {
   
   return (
     <div className="min-h-screen bg-gray-900">
+
+      {/* This component is the "Toaster" */}
+      <ToastContainer
+        position="top-right"
+        autoClose={4000}
+        hideProgressBar={false}
+        newestOnTop={false}
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="dark"
+      />
+
       <header className="bg-gray-800 shadow-lg border-b border-gray-700 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
