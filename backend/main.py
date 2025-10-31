@@ -16,16 +16,10 @@ sys.path.insert(0, parent_dir)
 # Load environment variables from .env file
 load_dotenv(os.path.join(parent_dir, '.env'))
 
-from fastapi import (
-    FastAPI, UploadFile, File, HTTPException, 
-    status, Depends
-)
+from fastapi import FastAPI, UploadFile, File, HTTPException, status
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
 
-from . import models, database
-from .database import get_db
 from job_queue import job_queue, JobStatus
 from services import (
     document_service, clause_service, chat_service, explainer_service, export_service,
@@ -34,10 +28,6 @@ from services import (
 
 app = FastAPI(title="Legal Redline Sandbox - API")
 
-# Create database tables
-# This line tells SQLAlchemy to create the tables if they don't exist
-models.Base.metadata.create_all(bind=database.engine)
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:5173"],
@@ -45,14 +35,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# NEW ENDPOINT
-@app.get("/chat/history/{session_id}")
-def get_chat_history(session_id: int, db: Session = Depends(get_db)):
-    # This is a simple query. You'd also check that the user
-    # logged in is allowed to see this chat session.
-    messages = db.query(models.ChatMessage).filter(models.ChatMessage.session_id == session_id).all()
-    return messages
 
 # Health endpoint
 @app.get("/health")
@@ -120,53 +102,16 @@ async def rewrite_clause(clause_data: dict):
     
     return {"job_id": job_id, "status": "processing"}
 
-from pydantic import BaseModel
-class ChatData(BaseModel):
-    message: str
-    session_id: int
-
 @app.post("/api/chat")
-async def chat(chat_data: ChatData, db: Session = Depends(get_db)):
-    """
-    Receives a user chat message, saves it, 
-    and starts a background job for the AI's response.
-    """
-    
-    # STEP 1: Save the USER's message immediately
-    try:
-        db_message = models.ChatMessage(
-            session_id=chat_data.session_id,
-            message_content=chat_data.message,
-            is_from_user=True  # Mark this message as from the user
-        )
-        db.add(db_message)
-        db.commit()
-        db.refresh(db_message)
-        logger.info(f"Saved user message {db_message.id} to session {chat_data.session_id}")
-    
-    except Exception as e:
-        logger.error(f"Failed to save user chat message: {e}")
-        db.rollback()
-        raise HTTPException(
-            status_code=500, 
-            detail="Could not save user message to database."
-        )
-
-    # STEP 2: Start the background job
-    # We now pass the session_id and user_message_id to the job
-    # so the job knows where to save the AI's response.
+async def chat(chat_data: dict):
+    """Start background chat processing"""
     job_id = job_queue.create_job(
         job_type="chat",
-        user_id="session_user", # You'll want to change this when you have real users
-        data={
-            "chat_data": chat_data.dict(), # Pass all chat data
-            "user_message_id": db_message.id, # Pass the new message ID
-            "session_id": chat_data.session_id # Pass the session ID
-        }
+        user_id="session_user",
+        data=chat_data
     )
     
     # Start background processing
-    # You MUST update chat_service.chat_async to handle this
     await job_queue.start_job(job_id, chat_service.chat_async)
     
     return {"job_id": job_id, "status": "processing"}

@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useAppState } from '../state/StateContext'
 import api from '../api'
+import { toast } from 'react-toastify'
 
 export default function DiffPage() {
   const { state } = useAppState()
@@ -9,14 +10,21 @@ export default function DiffPage() {
   const [diffJob, setDiffJob] = useState(null)
   const [diffResults, setDiffResults] = useState(null)
   const [viewMode, setViewMode] = useState('side-by-side') // 'side-by-side', 'unified', 'split'
+  const isInitialMount = useRef(true);
 
   // Reset page state when session resets
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+
     setSelectedClause('')
     setSelectedVersion('latest')
     setDiffJob(null)
     setDiffResults(null)
     setViewMode('side-by-side')
+    toast.info("Diff page reset");
   }, [state.resetFlag])
 
   const hasRewriteHistory = Object.keys(state.rewriteHistory).length > 0
@@ -51,7 +59,10 @@ export default function DiffPage() {
   }
 
   const handleGenerateDiff = async () => {
-    if (!selectedClause) return
+    if (!selectedClause) {
+      toast.warn("Please select a clause first.");
+      return
+    }
 
     const originalText = getOriginalClause(selectedClause)
     const versions = getClauseVersions(selectedClause)
@@ -65,6 +76,8 @@ export default function DiffPage() {
       const version = versions.find(v => v.id === selectedVersion)
       comparisonText = version?.content || ''
     }
+
+    toast.info("Generating comparison...");
 
     try {
       const response = await api.generateDiff(originalText, comparisonText, {
@@ -80,12 +93,16 @@ export default function DiffPage() {
           setDiffJob(job)
           
           if (job.status === 'completed' && job.result) {
+            toast.success("Comparison ready!");
             setDiffResults(job.result)
+          }else if (job.status === 'failed') {
+            toast.error(`Diff generation failed: ${job.error || 'Unknown error'}`);
           }
         })
       }
     } catch (error) {
       console.error('Diff generation failed:', error)
+      toast.error(`Diff generation failed: ${error.message}`);
       setDiffJob({ status: 'failed', error: error.message })
     }
   }
@@ -227,7 +244,10 @@ export default function DiffPage() {
             <h3 className="text-2xl font-semibold text-white mb-2">No Clause Rewrites Available</h3>
             <p className="text-gray-400 mb-6">Please rewrite some clauses first to generate comparisons</p>
             <button 
-              onClick={() => window.location.href = '/risk'}
+              onClick={() => {
+                toast.info("Redirecting to Risk Analysis...");
+                window.location.href = '/risk'
+              }}
               className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-8 py-3 rounded-lg font-semibold hover:from-blue-700 hover:to-indigo-700 transition-all duration-200"
             >
               Go to Risk Analysis
@@ -258,7 +278,21 @@ export default function DiffPage() {
               </h3>
               <select
                 value={selectedClause}
-                onChange={(e) => setSelectedClause(e.target.value)}
+                onChange={(e) => {
+                  const clauseId = e.target.value;
+                  setSelectedClause(clauseId);
+                  
+                  // Reset results when changing clause
+                  setDiffResults(null);
+                  setDiffJob(null);
+
+                  if (clauseId) {
+                    const clause = state.riskyClauses.find(c => 
+                      c.clause_id === clauseId || c.title === clauseId
+                    );
+                    toast.info(`Selected: ${clause?.title || clauseId}`);
+                  }
+                }}
                 className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 <option value="">Choose a clause to compare...</option>
