@@ -26,7 +26,7 @@ class User(BaseModel):
     last_active: datetime
 
     class Config:
-        orm_mode = True # Tells Pydantic to read data from SQLAlchemy models
+        from_attributes = True # Tells Pydantic to read data from SQLAlchemy models
         
 # This is what the frontend sends to add a message
 class ChatData(BaseModel):
@@ -45,7 +45,7 @@ class ChatMessage(BaseModel):
     timestamp: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # This is what the API returns for a chat session
 class ChatSession(BaseModel):
@@ -55,7 +55,7 @@ class ChatSession(BaseModel):
     messages: List[ChatMessage] = [] # You can optionally include messages
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # ClauseRewrite Schemas
 
@@ -75,4 +75,4 @@ class ClauseRewrite(BaseModel):
     created_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
