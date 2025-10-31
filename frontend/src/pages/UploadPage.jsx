@@ -1,20 +1,31 @@
-import React, { useState, useEffect } from 'react';
-import { useAppState } from '../state/StateContext';
+import React, { useState, useEffect, useRef } from 'react'
+import { useAppState } from '../state/StateContext'
+import { toast } from 'react-toastify'
+import api from '../api';
 import OtpAuth from '../components/OtpAuth';
 
 export default function UploadPage() {
-  const { state, dispatch } = useAppState();
-  const [file, setFile] = useState(null);
-  const [forceOcr, setForceOcr] = useState(false);
-  const [uploadJob, setUploadJob] = useState(null);
+  const { state, dispatch } = useAppState()
+  const [file, setFile] = useState(null)
+  const [forceOcr, setForceOcr] = useState(false)
+  const [uploadJob, setUploadJob] = useState(null)
+  const isInitialMount = useRef(true);
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [isVerified, setIsVerified] = useState(false);
 
   // Reset local state when session resets
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return; // Skip the effect on the first run
+    }
+
     setFile(null)
     setForceOcr(false)
     setUploadJob(null)
+
+    // TRIGGER 3: "New session" toast
+    toast.info("New session started");
   }, [state.resetFlag])
 
   // Check for existing completed jobs on component mount
@@ -52,6 +63,8 @@ export default function UploadPage() {
       }
     } catch (error) {
       console.error('Failed to check existing jobs:', error)
+      // Add error toast
+      toast.error("Failed to check for existing jobs.");
     }
   }
 
@@ -63,7 +76,11 @@ export default function UploadPage() {
       const response = await api.uploadFile(file, forceOcr)
       console.log('Upload response:', response)
       
+      
       if (response.job_id) {
+        // TRIGGER 1: "Document is uploaded" toast
+        toast.info(`Processing: ${file.name}`); // <-- ADDED
+
         setUploadJob({ job_id: response.job_id, status: 'processing' })
         dispatch({ 
           type: 'ADD_JOB', 
@@ -102,6 +119,10 @@ export default function UploadPage() {
           
           if (job.status === 'completed' && job.result) {
             console.log('Job completed with result:', job.result)
+            const riskCount = job.result.risky_clauses?.length || 0;
+            
+            // TRIGGER 2: "Analysis complete" toast
+            toast.success(`Analysis complete: ${riskCount} risks found!`);
             
             // Log completion activity
             dispatch({
@@ -119,6 +140,8 @@ export default function UploadPage() {
             setUploadJob(null)
           } else if (job.status === 'failed') {
             console.error('Job failed:', job.error)
+            // Add error toast
+            toast.error(`Analysis failed: ${job.error || 'Unknown error'}`);
             setUploadJob(job)
           }
         }, 3000)
@@ -128,6 +151,8 @@ export default function UploadPage() {
       }
     } catch (error) {
       console.error('Upload failed:', error)
+      // Add error toast
+      toast.error(`Upload failed: ${error.message}`);
       setUploadJob({ status: 'failed', error: error.message })
     }
   }

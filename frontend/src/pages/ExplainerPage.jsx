@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useAppState } from '../state/StateContext'
 import api from '../api'
+import { toast } from 'react-toastify'
 
 export default function ExplainerPage() {
   const { state } = useAppState()
@@ -17,11 +18,15 @@ export default function ExplainerPage() {
 
   const handleJobResult = (jobType, job) => {
     setJobs(prev => ({ ...prev, [jobType]: job }))
-    
+
     if (job.status === 'completed') {
+      // TRIGGER 3: "see explained results"
+      toast.success("Explanation ready!");
       setResults(prev => ({ ...prev, [jobType]: job.result }))
       setLoading(false)
     } else if (job.status === 'failed') {
+      const errorMsg = `Explanation failed: ${job.error || 'Unknown error'}`;
+      toast.error(errorMsg);
       setResults(prev => ({ ...prev, [jobType]: { error: job.error } }))
       setLoading(false)
     }
@@ -35,15 +40,20 @@ export default function ExplainerPage() {
     const handleExplain = async () => {
       if (!term) return
       setLoading(true)
-      
+
+      // TRIGGER 2: "explaining terms"
+      toast.info(`Analyzing term: "${term}"...`);
+
       try {
         const response = await api.explainTerm(term, context)
         if (response.job_id) {
-          const cleanup = api.startJobPolling(response.job_id, (job) => 
+          const cleanup = api.startJobPolling(response.job_id, (job) =>
             handleJobResult('term_explanation', job)
           )
         }
       } catch (error) {
+        const errorMsg = `Request failed: ${error.message}`;
+        toast.error(errorMsg);
         setResults(prev => ({ ...prev, term_explanation: { error: error.message } }))
         setLoading(false)
       }
@@ -72,16 +82,20 @@ export default function ExplainerPage() {
           </h3>
           <p className="text-gray-400">Get plain-English explanations of legal terminology</p>
         </div>
-        
+
         {detectedTerms.length > 0 && (
           <div className="bg-gray-700 rounded-xl p-4 border border-gray-600">
             <h4 className="text-lg font-semibold text-white mb-3">Terms found in your document:</h4>
             <div className="flex flex-wrap gap-2">
               {detectedTerms.slice(0, 10).map(detectedTerm => (
-                <button 
+                <button
                   key={detectedTerm}
                   className="px-3 py-1 bg-purple-600 text-white rounded-full text-sm hover:bg-purple-700 transition-colors duration-200"
-                  onClick={() => setTerm(detectedTerm)}
+                  onClick={() => {
+                    setTerm(detectedTerm)
+                    // TRIGGER 1: "term selected"
+                    toast.info(`Selected: ${detectedTerm}`);
+                  }}
                 >
                   {detectedTerm}
                 </button>
@@ -89,7 +103,7 @@ export default function ExplainerPage() {
             </div>
           </div>
         )}
-        
+
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">Legal Term:</label>
@@ -101,7 +115,7 @@ export default function ExplainerPage() {
               className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
             />
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">Context (optional):</label>
             <textarea
@@ -113,9 +127,9 @@ export default function ExplainerPage() {
             />
           </div>
         </div>
-        
-        <button 
-          onClick={handleExplain} 
+
+        <button
+          onClick={handleExplain}
           disabled={!term || loading}
           className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white px-6 py-3 rounded-lg font-semibold hover:from-purple-700 hover:to-pink-700 transition-all duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed"
         >
@@ -141,33 +155,32 @@ export default function ExplainerPage() {
                   </h4>
                   <p className="text-gray-300 leading-relaxed">{results.term_explanation.plain_english}</p>
                 </div>
-                
+
                 <div className="bg-gray-800 p-4 rounded-lg">
                   <h4 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
                     ⚖️ Legal Definition
                   </h4>
                   <p className="text-gray-300 leading-relaxed">{results.term_explanation.legal_definition}</p>
                 </div>
-                
+
                 <div className="bg-gray-800 p-4 rounded-lg">
                   <h4 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
                     🎯 Real-World Impact
                   </h4>
                   <p className="text-gray-300 leading-relaxed">{results.term_explanation.real_world_impact}</p>
                 </div>
-                
+
                 {results.term_explanation.risk_level && (
                   <div className="flex justify-center">
-                    <span className={`px-4 py-2 rounded-full text-sm font-medium ${
-                      results.term_explanation.risk_level.toLowerCase() === 'high' ? 'bg-red-600 text-white' :
-                      results.term_explanation.risk_level.toLowerCase() === 'medium' ? 'bg-yellow-600 text-white' :
-                      'bg-green-600 text-white'
-                    }`}>
+                    <span className={`px-4 py-2 rounded-full text-sm font-medium ${results.term_explanation.risk_level.toLowerCase() === 'high' ? 'bg-red-600 text-white' :
+                        results.term_explanation.risk_level.toLowerCase() === 'medium' ? 'bg-yellow-600 text-white' :
+                          'bg-green-600 text-white'
+                      }`}>
                       Risk Level: {results.term_explanation.risk_level}
                     </span>
                   </div>
                 )}
-                
+
                 {results.term_explanation.alternatives && results.term_explanation.alternatives.length > 0 && (
                   <div className="bg-gray-800 p-4 rounded-lg">
                     <h4 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
@@ -199,7 +212,7 @@ export default function ExplainerPage() {
           </h1>
           <p className="text-gray-300 text-lg">AI-Powered Legal Term Explanation & Definition</p>
         </div>
-        
+
         {/* Term Explainer Content */}
         <div className="bg-gray-800 rounded-2xl shadow-lg border border-gray-700 min-h-[60vh] p-6">
           <TermExplainer />

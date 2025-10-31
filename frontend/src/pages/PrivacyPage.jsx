@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useAppState } from '../state/StateContext'
 import api from '../api'
+import { toast } from 'react-toastify'
 
 export default function PrivacyPage() {
   const { state } = useAppState()
@@ -16,9 +17,15 @@ export default function PrivacyPage() {
   const [privacyJob, setPrivacyJob] = useState(null)
   const [privacyResults, setPrivacyResults] = useState(null)
   const [activeTab, setActiveTab] = useState('scan')
+  const isInitialMount = useRef(true);
 
   // Reset page state when session resets
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+
     setSelectedInfoTypes([
       'PERSON_NAME',
       'EMAIL_ADDRESS',
@@ -31,6 +38,7 @@ export default function PrivacyPage() {
     setPrivacyJob(null)
     setPrivacyResults(null)
     setActiveTab('scan')
+    toast.info("Privacy settings reset");
   }, [state.resetFlag])
 
   const availableInfoTypes = [
@@ -60,6 +68,8 @@ export default function PrivacyPage() {
   const handlePrivacyScan = async () => {
     if (!hasDocument) return
 
+    toast.info("Starting privacy scan...");
+
     try {
       const response = await api.processPrivacy(
         state.document.content,
@@ -74,13 +84,17 @@ export default function PrivacyPage() {
           setPrivacyJob(job)
           
           if (job.status === 'completed' && job.result) {
+            toast.success("Privacy scan complete!");
             setPrivacyResults(job.result)
             setActiveTab('results')
+          } else if (job.status === 'failed') {
+            toast.error(`Scan failed: ${job.error || 'Unknown error'}`);
           }
         })
       }
     } catch (error) {
       console.error('Privacy scanning failed:', error)
+      toast.error(`Scan failed: ${error.message}`);
       setPrivacyJob({ status: 'failed', error: error.message })
     }
   }
@@ -88,6 +102,7 @@ export default function PrivacyPage() {
   const downloadRedactedDocument = () => {
     if (!privacyResults?.redacted_content) return
 
+    toast.success("Downloading redacted document...");
     const blob = new Blob([privacyResults.redacted_content], { type: 'text/plain' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -100,6 +115,7 @@ export default function PrivacyPage() {
   const downloadPrivacyReport = () => {
     if (!privacyResults) return
 
+    toast.success("Downloading privacy report (JSON)...");
     const report = {
       scan_date: new Date().toISOString(),
       document_name: state.document.filename || 'Legal Document',
@@ -138,7 +154,10 @@ export default function PrivacyPage() {
             <h3 className="text-2xl font-semibold text-white mb-2">No Document Uploaded</h3>
             <p className="text-gray-400 mb-6">Please upload a document first to scan for sensitive information</p>
             <button 
-              onClick={() => window.location.href = '/'}
+              onClick={() => {
+                toast.info("Redirecting to Upload Page...");
+                window.location.href = '/upload'
+              }}
               className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-8 py-3 rounded-lg font-semibold hover:from-blue-700 hover:to-indigo-700 transition-all duration-200"
             >
               Go to Upload Page

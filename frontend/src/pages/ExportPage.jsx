@@ -1,6 +1,7 @@
-﻿import React, { useState, useEffect } from 'react'
+﻿import React, { useState, useEffect, useRef } from 'react'
 import { useAppState } from '../state/StateContext'
 import api from '../api'
+import { toast } from 'react-toastify'
 
 export default function ExportPage() {
   const { state } = useAppState()
@@ -15,9 +16,15 @@ export default function ExportPage() {
   const [exportJob, setExportJob] = useState(null)
   const [exportResult, setExportResult] = useState(null)
   const [previewContent, setPreviewContent] = useState('')
+  const isInitialMount = useRef(true);
 
   // Reset local state when session resets
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return; // Skip the effect on the first run
+    }
+
     setExportFormat('html')
     setExportOptions({
       includeOriginal: true,
@@ -29,6 +36,7 @@ export default function ExportPage() {
     setExportJob(null)
     setExportResult(null)
     setPreviewContent('')
+    toast.info("Export settings reset");
   }, [state.resetFlag])
 
   const hasRewriteHistory = Object.keys(state.rewriteHistory).length > 0
@@ -51,6 +59,8 @@ export default function ExportPage() {
       }
     }
 
+    toast.info("Generating your report...");
+
     try {
       const response = await api.exportReport(reportData, exportFormat, exportOptions)
       
@@ -61,21 +71,27 @@ export default function ExportPage() {
           setExportJob(job)
           
           if (job.status === 'completed' && job.result) {
+            toast.success("Report generated successfully!");
             setExportResult(job.result)
             if (job.result.format === 'html') {
               setPreviewContent(job.result.content)
             }
+          } else if (job.status === 'failed') {
+            toast.error(`Report generation failed: ${job.error || 'Unknown error'}`);
           }
         })
       }
     } catch (error) {
       console.error('Export failed:', error)
+      toast.error(`Export failed: ${error.message}`);
       setExportJob({ status: 'failed', error: error.message })
     }
   }
 
   const downloadReport = () => {
     if (!exportResult) return
+
+    toast.success("Downloading report...");
 
     if (exportResult.format === 'html') {
       const blob = new Blob([exportResult.content], { type: 'text/html' })
@@ -119,7 +135,10 @@ export default function ExportPage() {
             <h3 className="text-2xl font-semibold text-white mb-2">No Document Uploaded</h3>
             <p className="text-gray-400 mb-6">Please upload and analyze a document first to generate reports</p>
             <button 
-              onClick={() => window.location.href = '/'}
+              onClick={() => {
+                toast.info("Redirecting to Upload Page...");
+                window.location.href = '/upload'
+              }}
               className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-8 py-3 rounded-lg font-semibold hover:from-blue-700 hover:to-indigo-700 transition-all duration-200"
             >
               Go to Upload Page
