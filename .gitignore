@@ -2,3 +2,6 @@
 __pycache__
 utils/__pycache__
 frontend/node_modules/
+backend/venv/
+backend/__pycache__
+backend/.env 

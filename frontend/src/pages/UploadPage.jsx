@@ -1,12 +1,15 @@
-import React, { useState, useEffect } from 'react'
-import { useAppState } from '../state/StateContext'
-import api from '../api'
+import React, { useState, useEffect } from 'react';
+import { useAppState } from '../state/StateContext';
+import OtpAuth from '../components/OtpAuth';
 
 export default function UploadPage() {
-  const { state, dispatch } = useAppState()
-  const [file, setFile] = useState(null)
-  const [forceOcr, setForceOcr] = useState(false)
-  const [uploadJob, setUploadJob] = useState(null)
+  const { state, dispatch } = useAppState();
+  const [file, setFile] = useState(null);
+  const [forceOcr, setForceOcr] = useState(false);
+  const [uploadJob, setUploadJob] = useState(null);
+  const [showOtpModal, setShowOtpModal] = useState(false);
+  const [isVerified, setIsVerified] = useState(false);
+
   // Reset local state when session resets
   useEffect(() => {
     setFile(null)
@@ -129,6 +132,20 @@ export default function UploadPage() {
     }
   }
 
+  const handleUploadClick = () => {
+    if (!isVerified) {
+      setShowOtpModal(true);
+    } else {
+      onUpload();
+    }
+  };
+
+  const handleVerificationSuccess = () => {
+    setIsVerified(true);
+    setShowOtpModal(false);
+    onUpload();
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-blue-900 p-6">
       <div className="max-w-4xl mx-auto">
@@ -183,7 +200,7 @@ export default function UploadPage() {
             {/* Action Buttons */}
             <div className="flex gap-4 pt-4">
               <button 
-                onClick={onUpload} 
+                onClick={handleUploadClick} 
                 disabled={!file || uploadJob?.status === 'processing'}
                 className={`flex-1 py-4 px-6 rounded-lg font-semibold text-white transition-all duration-200 ${
                   !file || uploadJob?.status === 'processing'
@@ -207,6 +224,12 @@ export default function UploadPage() {
                 )}
               </button>
               
+              <OtpAuth
+                isOpen={showOtpModal}
+                onClose={() => setShowOtpModal(false)}
+                onVerified={handleVerificationSuccess}
+              />
+
               <button 
                 onClick={checkExistingJobs}
                 className="px-6 py-4 bg-gray-700 text-gray-300 rounded-lg font-semibold hover:bg-gray-600 transition-colors duration-200 flex items-center gap-2"

@@ -119,7 +119,7 @@ export default function ExportPage() {
             <h3 className="text-2xl font-semibold text-white mb-2">No Document Uploaded</h3>
             <p className="text-gray-400 mb-6">Please upload and analyze a document first to generate reports</p>
             <button 
-              onClick={() => window.location.href = '/upload'}
+              onClick={() => window.location.href = '/'}
               className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-8 py-3 rounded-lg font-semibold hover:from-blue-700 hover:to-indigo-700 transition-all duration-200"
             >
               Go to Upload Page
