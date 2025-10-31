@@ -5,6 +5,7 @@ import { toast } from 'react-toastify'
 
 export default function ExplainerPage() {
   const { state } = useAppState()
+  const { sessionId } = state;
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState({})
   const [jobs, setJobs] = useState({})
@@ -39,6 +40,12 @@ export default function ExplainerPage() {
 
     const handleExplain = async () => {
       if (!term) return
+
+      if (!sessionId) {
+        toast.error("Session is not ready. Please wait a moment.");
+        return;
+      }
+
       setLoading(true)
 
       // TRIGGER 2: "explaining terms"

@@ -1,13 +1,34 @@
 const API_BASE = import.meta.env.VITE_API_BASE || '/api'
 
 async function apiCall(url, options = {}) {
+  const token = localStorage.getItem('accessToken');
+
+  const headers = {
+    ...options.headers,
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   const response = await fetch(`${API_BASE}${url}`, {
     ...options,
-    headers: {
-      ...options.headers,
-    }
+    headers,
   })
+
+  if (!response.ok) {
+    // If it fails, create an error object that our app can understand
+    const errorData = await response.json().catch(() => ({}));
+    const error = new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+    
+    // This part makes it behave like axios, so err.response.status works
+    error.response = { 
+      status: response.status,
+      data: errorData,
+    };
+    throw error;
+  }
   
+  // If we are here, the request was successful
   return response
 }
 
@@ -148,8 +169,43 @@ export function startJobPolling(jobId, onUpdate, interval = 2000) {
   return () => clearInterval(pollInterval) // Return cleanup function
 }
 
+export async function registerUser(username, email, password) {
+  const res = await apiCall('/users/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, email, password }),
+  });
+  return res?.json();
+}
+
+export async function loginUser(email, password) {
+  // FastAPI's OAuth2 expects form data
+  const formData = new URLSearchParams();
+  formData.append('username', email);
+  formData.append('password', password);
+
+  const res = await apiCall('/auth/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: formData,
+  });
+  return res?.json();
+}
+
+export async function createChatSession() {
+  // This just needs the token, which apiCall now adds automatically
+  const res = await apiCall('/chat/sessions', {
+    method: 'POST',
+  });
+  return res?.json();
+}
+
 export default { 
+  registerUser,
+  loginUser,
+  createChatSession,
+
   uploadFile, rewriteClause, startChat, explainTerm,
   analyzeClause, translateToPlain, getHistoricalContext, exportReport, 
   generateDiff, redactDocument, processPrivacy, getJobStatus, getAllJobs, startJobPolling
-}
+};

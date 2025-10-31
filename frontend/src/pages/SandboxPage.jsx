@@ -5,6 +5,7 @@ import { toast } from 'react-toastify'
 
 export default function SandboxPage() {
   const { state, dispatch } = useAppState()
+  const { sessionId } = state;
   const [selectedIdx, setSelectedIdx] = useState(0)
   const [rewrite, setRewrite] = useState('')
   const [loading, setLoading] = useState(false)
@@ -19,6 +20,12 @@ export default function SandboxPage() {
 
   async function onRewrite() {
     if (!clause) return
+
+    if (!sessionId) {
+      toast.error("Session is not ready. Please wait a moment.");
+      return;
+    }
+
     setLoading(true)
 
     // TRIGGER 3 & 5: "Generating rewrite" / "Regenerating"

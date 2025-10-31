@@ -5,6 +5,7 @@ import { toast } from 'react-toastify'
 
 export default function UploadPage() {
   const { state, dispatch } = useAppState()
+  const { sessionId } = state;
   const [file, setFile] = useState(null)
   const [forceOcr, setForceOcr] = useState(false)
   const [uploadJob, setUploadJob] = useState(null)
@@ -26,10 +27,15 @@ export default function UploadPage() {
 
   // Check for existing completed jobs on component mount
   useEffect(() => {
-    checkExistingJobs()
-  }, [])
+    // Only run this check *after* the sessionId is available
+    if (sessionId) {
+      checkExistingJobs()
+    }
+  }, [sessionId]) // <-- Run this effect when sessionId changes, when it's loaded)
 
   async function checkExistingJobs() {
+    if (!sessionId) return;
+
     try {
       const jobs = await api.getAllJobs()
       console.log('Existing jobs:', jobs)
@@ -66,6 +72,12 @@ export default function UploadPage() {
 
   async function onUpload() {
     if (!file) return
+
+    // Check if the session is ready before trying to upload
+    if (!sessionId) {
+      toast.error("Session is not ready. Please wait a moment.");
+      return;
+    }
     
     try {
       console.log('Starting upload for file:', file.name)

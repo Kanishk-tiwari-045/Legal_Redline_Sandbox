@@ -2,6 +2,7 @@ import os
 import sys
 import tempfile
 import asyncio
+import logging
 from typing import Optional, Dict, Any
 from fastapi import HTTPException, status, UploadFile
 
@@ -9,6 +10,14 @@ from fastapi import HTTPException, status, UploadFile
 ROOT = os.path.dirname(os.path.dirname(__file__))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
+    
+# ADDED DATABASE IMPORTS
+try:
+    from database import SessionLocal
+    from models import ChatMessage
+except ImportError:
+    logging.warning("Could not import DB modules. Assuming relative import.")
+    pass
 
 from utils.pdf_processor import PDFProcessor
 from utils.risk_detector import RiskDetector
@@ -227,36 +236,89 @@ class ClauseService:
 class ChatService:
     def __init__(self):
         self.chatbot = Chatbot()
+        self.logger = logging.getLogger(__name__)
         
     async def chat_async(self, job: Job) -> Dict[str, Any]:
-        """Async wrapper for chat responses"""
-        chat_type = job.data.get("type", "general")
-        prompt = job.data.get("prompt", "")
-        history = job.data.get("history", [])
-        document_text = job.data.get("document_text", "")
+        """
+        Async wrapper for chat responses.
+        Gets AI response and saves it to the database.
+        """
+        self.logger.info(f"Job {job.job_id}: Starting chat_async.")
         
+        # 1. Get data from Job
+        # This matches the new data structure from main.py
+        chat_data = job.data.get("chat_data", {})
+        session_id = job.data.get("session_id")
+        
+        # Extract original prompt data from the nested dict
+        chat_type = chat_data.get("type", "general")
+        prompt = chat_data.get("prompt", "")
+        history = chat_data.get("history", [])
+        document_text = chat_data.get("document_text", "")
+
+        # Check for required data
+        if not session_id or not prompt:
+            self.logger.error(f"Job {job.job_id}: Missing session_id or prompt.")
+            job.set_failed("Missing session_id or prompt in job data.")
+            return {"error": "Missing session_id or prompt."}
+
         job_queue.update_progress(job.job_id, 20)
-        
         loop = asyncio.get_event_loop()
         
-        if chat_type == "document":
-            response = await loop.run_in_executor(
-                None,
-                self.chatbot.get_document_context_response,
-                prompt,
-                document_text,
-                history
+        # 2. Get AI response
+        response_text = ""
+        try:
+            if chat_type == "document":
+                response_text = await loop.run_in_executor(
+                    None,
+                    self.chatbot.get_document_context_response,
+                    prompt,
+                    document_text,
+                    history
+                )
+            else:
+                response_text = await loop.run_in_executor(
+                    None,
+                    self.chatbot.get_general_response,
+                    prompt,
+                    history
+                )
+            self.logger.info(f"Job {job.job_id}: Got AI response.")
+            job_queue.update_progress(job.job_id, 90)
+
+        except Exception as e:
+            self.logger.error(f"Job {job.job_id}: Failed to get AI response: {e}")
+            job.set_failed(str(e))
+            return {"error": str(e)}
+
+        # 3. Save AI response to database
+        db = None
+        try:
+            db = SessionLocal() # Create a new, independent DB session
+            db_ai_message = ChatMessage(
+                session_id=session_id,
+                message_content=response_text,
+                is_from_user=False  # Mark as from AI
             )
-        else:
-            response = await loop.run_in_executor(
-                None,
-                self.chatbot.get_general_response,
-                prompt,
-                history
-            )
+            db.add(db_ai_message)
+            db.commit()
+            db.refresh(db_ai_message)
+            self.logger.info(f"Job {job.job_id}: Saved AI message {db_ai_message.id} to session {session_id}")
+            
+            # Mark job as complete with the AI response
+            job.set_completed(result={"response": response_text})
+            return {"response": response_text}
+
+        except Exception as e:
+            self.logger.error(f"Job {job.job_id}: Failed to save AI response to DB: {e}")
+            if db:
+                db.rollback()
+            job.set_failed(f"Failed to save AI response: {e}")
+            return {"error": f"Failed to save AI response: {e}"}
         
-        job_queue.update_progress(job.job_id, 90)
-        return {"response": response}
+        finally:
+            if db:
+                db.close() # Always close the session
 
 class ExplainerService:
     def __init__(self):
