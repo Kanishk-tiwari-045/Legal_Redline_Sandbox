@@ -6,13 +6,15 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 
 # Password Hashing
-# Use bcrypt for hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Use pbkdf2_sha256 as a fallback since argon2 is not available
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 def get_password_hash(password: str) -> str:
+    # Truncate password to 72 bytes as required by bcrypt
+    password = password[:72] if len(password.encode('utf-8')) > 72 else password
     return pwd_context.hash(password)
 
 
