@@ -1,5 +1,5 @@
-const API_BASE = import.meta.env.VITE_API_BASE || '/api'
-const AUTH_API_BASE = import.meta.env.VITE_AUTH_API_BASE || 'http://localhost:5001'
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000/api'
+const AUTH_API_BASE = import.meta.env.VITE_AUTH_API_BASE || 'http://localhost:5000'
 
 // Helper to get auth token
 function getAuthToken() {
@@ -113,12 +113,12 @@ export async function loginUser(email, password) {
 }
 
 export async function createChatSession() {
-  const res = await apiCall('/chat/session', {
+  const res = await apiCall('/chat/sessions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({}),
   })
-  return res?.json()
+  return res.json()
 }
 
 export function isAuthenticated() {
@@ -272,5 +272,6 @@ export default {
   analyzeClause, translateToPlain, getHistoricalContext, exportReport, 
   generateDiff, redactDocument, processPrivacy, getJobStatus, getAllJobs, startJobPolling,
   // Auth exports
-  sendOtp, verifyOtp, verifyToken, logout, isAuthenticated, getAuthUser
+  sendOtp, verifyOtp, verifyToken, logout, isAuthenticated, getAuthUser,
+  registerUser, loginUser, createChatSession
 }

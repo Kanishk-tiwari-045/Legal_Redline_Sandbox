@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
-from typing import List, Any, Dict
+from typing import List, Any, Dict, Optional
 
 # Token Schemas
 class Token(BaseModel):
@@ -50,7 +50,7 @@ class ChatMessage(BaseModel):
 # This is what the API returns for a chat session
 class ChatSession(BaseModel):
     id: int
-    user_id: int
+    user_id: Optional[int] = None
     created_at: datetime
     messages: List[ChatMessage] = [] # You can optionally include messages
 

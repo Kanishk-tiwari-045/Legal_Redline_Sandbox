@@ -18,6 +18,13 @@ function Header({ handleLeaveSession }) {
                   to="/" 
                   className="flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-gray-300 hover:bg-gray-700 hover:text-blue-400 transition-all duration-200"
                 >
+                  <span>🏠</span>
+                  Home
+                </Link>
+                <Link 
+                  to="/upload" 
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-gray-300 hover:bg-gray-700 hover:text-blue-400 transition-all duration-200"
+                >
                   <span>📄</span>
                   Upload
                 </Link>
@@ -85,8 +92,11 @@ function Header({ handleLeaveSession }) {
           
           {/* Mobile Navigation */}
           <div className="md:hidden mt-4 space-y-3">
-            <nav className="grid grid-cols-4 gap-2">
+            <nav className="grid grid-cols-5 gap-1">
               <Link to="/" className="flex flex-col items-center gap-1 px-2 py-2 text-xs bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600">
+                <span>🏠</span>Home
+              </Link>
+              <Link to="/upload" className="flex flex-col items-center gap-1 px-2 py-2 text-xs bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600">
                 <span>📄</span>Upload
               </Link>
               <Link to="/risk" className="flex flex-col items-center gap-1 px-2 py-2 text-xs bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600">

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { Routes, Route, Link, useNavigate } from 'react-router-dom'
 import { useAppState } from './state/StateContext'
+import HomePage from './pages/Home'
 import UploadPage from './pages/UploadPage'
 import RiskPage from './pages/RiskPage'
 import SandboxPage from './pages/SandboxPage'
@@ -26,36 +27,10 @@ export default function App() {
 
   // This effect runs once when the app loads
   useEffect(() => {
-    // This function checks for a token and creates a guest user if needed.
+    // Initialize app without requiring authentication
     const initializeSession = async () => {
-      let token = localStorage.getItem('accessToken');
-
-      if (!token) {
-        // No token found, so let's create a new anonymous user
-        try {
-          // 1. Generate random user credentials
-          const randomEmail = `${uuidv4()}@guest.com`;
-          const randomPassword = uuidv4();
-
-          // 2. Register this new guest user (using api.js)
-          await api.registerUser(randomEmail, randomEmail, randomPassword);
-
-          // 3. Log in as this new user to get a token (using api.js)
-          const loginResponse = await api.loginUser(randomEmail, randomPassword);
-
-          // .json() is handled inside api.js, so we get the data directly
-          token = loginResponse.access_token;
-          localStorage.setItem('accessToken', token);
-
-        } catch (err) {
-          console.error("Failed to create anonymous session:", err);
-        }
-      }
-
-      // Now we have a token (either old or new).
-      // Let's get/create a chat session for this user.
       try {
-        // 4. Create chat session (using api.js)
+        // Create an anonymous chat session for the user
         const sessionResponse = await api.createChatSession();
         
         // Save this new session ID to our global state
@@ -65,15 +40,11 @@ export default function App() {
         });
 
       } catch (err) {
-        console.error("Failed to create/get chat session:", err);
-
-        if (err.response && err.response.status === 401) {
-          localStorage.removeItem('accessToken');
-          window.location.reload();
-        }
+        console.error("Failed to create chat session:", err);
+        // Don't block the app if chat session creation fails
       }
       
-      // We're done! Show the app.
+      // Show the app regardless
       setIsLoading(false);
     };
 
@@ -102,7 +73,7 @@ export default function App() {
       // but is deleted when you close the browser tab.
       sessionStorage.setItem('showNewSessionToast', 'true');
 
-      // Navigate to upload page
+      // Navigate to home page
       navigate('/')
 
       // Small delay to ensure state is processed, then reload
@@ -142,7 +113,8 @@ export default function App() {
       
       <main className="min-h-screen">
         <Routes>
-          <Route path="/" element={<UploadPage />} />
+          <Route path="/" element={<HomePage />} />
+          <Route path="/upload" element={<UploadPage />} />
           <Route path="/risk" element={<RiskPage />} />
           <Route path="/sandbox" element={<SandboxPage />} />
           <Route path="/explainer" element={<ExplainerPage />} />
