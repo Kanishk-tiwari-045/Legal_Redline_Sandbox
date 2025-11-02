@@ -4,6 +4,7 @@ import os
 from typing import Dict, List, Any, Tuple
 from google import genai
 from google.genai import types
+from .guardrails import InputValidator, ContentFilter, rate_limit
 
 
 class RiskDetector:
@@ -91,13 +92,45 @@ class RiskDetector:
             }
         }
     
+    @rate_limit(max_requests=20, time_window=60)
     def analyze_document(self, document_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Analyze all clauses in the document for risks"""
         risky_clauses = []
         
-        print(f"Analyzing {len(document_data['clauses'])} clauses...")
+        # Validate document data
+        if not isinstance(document_data, dict) or 'clauses' not in document_data:
+            raise ValueError("Invalid document data: missing 'clauses' key")
         
-        for i, clause in enumerate(document_data['clauses']):
+        clauses = document_data['clauses']
+        if not isinstance(clauses, list):
+            raise ValueError("Invalid document data: 'clauses' must be a list")
+        
+        # Limit number of clauses to prevent abuse
+        max_clauses = 200
+        if len(clauses) > max_clauses:
+            print(f"Warning: Document has {len(clauses)} clauses. Limiting to first {max_clauses}.")
+            clauses = clauses[:max_clauses]
+        
+        print(f"Analyzing {len(clauses)} clauses...")
+        
+        for i, clause in enumerate(clauses):
+            # Validate clause structure
+            if not isinstance(clause, dict) or 'text' not in clause:
+                print(f"Warning: Skipping invalid clause at index {i}")
+                continue
+            
+            # Validate clause text
+            clause_text = clause.get('text', '')
+            is_valid, error = InputValidator.validate_text_input(clause_text, max_length=50000)
+            if not is_valid:
+                print(f"Warning: Skipping clause {i+1} - {error}")
+                continue
+            
+            # Check for forbidden content
+            has_forbidden, issues = ContentFilter.check_forbidden_content(clause_text)
+            if has_forbidden:
+                print(f"Warning: Clause {i+1} contains potentially forbidden content")
+            
             risk_analysis = self._analyze_clause(clause)
             print(f"Clause {i+1} '{clause['title'][:50]}...' - Score: {risk_analysis['score']}, Tags: {risk_analysis['tags']}")
             

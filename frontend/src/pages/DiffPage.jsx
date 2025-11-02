@@ -5,6 +5,7 @@ import { toast } from 'react-toastify'
 
 export default function DiffPage() {
   const { state } = useAppState()
+  const { sessionId } = state;
   const [selectedClause, setSelectedClause] = useState('')
   const [selectedVersion, setSelectedVersion] = useState('latest')
   const [diffJob, setDiffJob] = useState(null)
@@ -62,6 +63,11 @@ export default function DiffPage() {
     if (!selectedClause) {
       toast.warn("Please select a clause first.");
       return
+    }
+
+    if (!sessionId) {
+      toast.error("Session is not ready. Please wait a moment.");
+      return;
     }
 
     const originalText = getOriginalClause(selectedClause)

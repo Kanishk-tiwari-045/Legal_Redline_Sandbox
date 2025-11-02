@@ -5,6 +5,7 @@ import { toast } from 'react-toastify'
 
 export default function PrivacyPage() {
   const { state } = useAppState()
+  const { sessionId } = state;
   const [selectedInfoTypes, setSelectedInfoTypes] = useState([
     'PERSON_NAME',
     'EMAIL_ADDRESS',
@@ -67,6 +68,11 @@ export default function PrivacyPage() {
 
   const handlePrivacyScan = async () => {
     if (!hasDocument) return
+
+    if (!sessionId) {
+      toast.error("Session is not ready. Please wait a moment.");
+      return;
+    }
 
     toast.info("Starting privacy scan...");
 

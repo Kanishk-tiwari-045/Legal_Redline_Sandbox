@@ -5,6 +5,7 @@ import { toast } from 'react-toastify'
 
 export default function ExportPage() {
   const { state } = useAppState()
+  const { sessionId } = state;
   const [exportFormat, setExportFormat] = useState('html')
   const [exportOptions, setExportOptions] = useState({
     includeOriginal: true,
@@ -45,6 +46,11 @@ export default function ExportPage() {
 
   const handleExport = async () => {
     if (!hasDocument) return
+
+    if (!sessionId) {
+      toast.error("Session is not ready. Please wait a moment.");
+      return;
+    }
 
     const reportData = {
       document: state.document,
