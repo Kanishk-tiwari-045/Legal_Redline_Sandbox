@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 from google import genai
+from .guardrails import InputValidator, APIGuardrails, rate_limit
 
 load_dotenv()
 
@@ -22,10 +23,16 @@ class Chatbot:
             print(f"Error configuring Gemini API: {e}")
             self.client = None
 
+    @rate_limit(max_requests=50, time_window=60)
     def get_general_response(self, user_prompt, chat_history):
         """Get a general response from the AI model"""
         if not self.client:
             return "Error: Gemini API is not configured. Please check your API key."
+        
+        # Validate input
+        is_valid, error = InputValidator.validate_text_input(user_prompt, max_length=10000)
+        if not is_valid:
+            return f"Error: Invalid input - {error}"
             
         # Build the conversation context
         full_prompt = "You are a helpful legal assistant chatbot.\n"
@@ -33,6 +40,11 @@ class Chatbot:
             role = "User" if message['role'] == 'user' else "Assistant"
             full_prompt += f"{role}: {message['content']}\n"
         full_prompt += f"User: {user_prompt}\nAssistant:"
+        
+        # Check token limit
+        is_within_limit, limit_msg = APIGuardrails.check_token_limit(full_prompt)
+        if not is_within_limit:
+            return f"Error: {limit_msg}"
 
         try:
             # Use the new SDK method
@@ -44,10 +56,23 @@ class Chatbot:
         except Exception as e:
             return f"Error: Unable to get response from AI. {str(e)}"
 
+    @rate_limit(max_requests=50, time_window=60)
     def get_document_context_response(self, user_prompt, document_text, chat_history):
         """Get a response based on document context"""
         if not self.client:
             return "Error: Gemini API is not configured. Please check your API key."
+        
+        # Validate inputs
+        is_valid, error = InputValidator.validate_text_input(user_prompt, max_length=10000)
+        if not is_valid:
+            return f"Error: Invalid prompt - {error}"
+        
+        is_valid, error = InputValidator.validate_text_input(document_text, max_length=1000000)
+        if not is_valid:
+            return f"Error: Invalid document - {error}"
+        
+        # Sanitize user prompt
+        user_prompt = InputValidator.sanitize_text(user_prompt)
 
         # Build the system prompt with document context
         system_prompt = f"""
@@ -67,6 +92,11 @@ class Chatbot:
             role = "User" if message['role'] == 'user' else "Assistant"
             full_prompt += f"{role}: {message['content']}\n"
         full_prompt += f"User: {user_prompt}\nAssistant:"
+        
+        # Check token limit
+        is_within_limit, limit_msg = APIGuardrails.check_token_limit(full_prompt)
+        if not is_within_limit:
+            return f"Error: {limit_msg}"
 
         try:
             # Use the new SDK method

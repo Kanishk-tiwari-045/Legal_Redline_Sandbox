@@ -2,6 +2,7 @@ import fitz  # PyMuPDF
 import re
 import os
 from typing import Dict, List, Any
+from .guardrails import InputValidator, ContentFilter
 
 # Import OCR processors
 try:
@@ -33,8 +34,29 @@ class PDFProcessor:
     
     def process_pdf(self, file_path: str) -> Dict[str, Any]:
         """Process PDF and extract structured data"""
+        # Validate file path
+        is_valid, error = InputValidator.validate_file_path(file_path)
+        if not is_valid:
+            raise ValueError(f"Invalid file path: {error}")
+        
+        # Check if file exists
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+        
+        # Check file size (max 50MB)
+        file_size = os.path.getsize(file_path)
+        max_size = 50 * 1024 * 1024  # 50MB
+        if file_size > max_size:
+            raise ValueError(f"File too large: {file_size / (1024*1024):.2f}MB (max {max_size / (1024*1024)}MB)")
+        
         try:
             doc = fitz.open(file_path)
+            
+            # Limit number of pages
+            max_pages = 500
+            if len(doc) > max_pages:
+                doc.close()
+                raise ValueError(f"Document has too many pages: {len(doc)} (max {max_pages})")
             
             # Extract text from all pages
             full_text = ""
@@ -49,6 +71,16 @@ class PDFProcessor:
                 })
                 full_text += page_text + "\n"
             
+            # Validate that document appears to be legal content
+            is_legal, msg = ContentFilter.validate_legal_context(full_text)
+            if not is_legal:
+                print(f"Warning: {msg}")
+            
+            # Check for PII
+            pii_found = ContentFilter.detect_pii(full_text)
+            if pii_found:
+                print(f"Warning: Potential PII detected: {pii_found}")
+            
             # Extract clauses
             clauses = self._extract_clauses(page_texts)
             
@@ -60,7 +92,11 @@ class PDFProcessor:
                 'word_count': word_count,
                 'full_text': full_text,
                 'page_texts': page_texts,
-                'clauses': clauses
+                'clauses': clauses,
+                'warnings': {
+                    'pii_detected': pii_found,
+                    'legal_content_verified': is_legal
+                }
             }
             
             doc.close()
