@@ -1,5 +1,5 @@
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000/api'
-const AUTH_API_BASE = import.meta.env.VITE_AUTH_API_BASE || 'http://localhost:5000'
+const API_BASE = import.meta.env.VITE_API_BASE || 'https://legal-redline-sandbox.onrender.com/api'
+const AUTH_API_BASE = import.meta.env.VITE_AUTH_API_BASE || 'https://legal-redline-sandbox-1.onrender.com/:5000'
 
 // Helper to get auth token
 function getAuthToken() {
