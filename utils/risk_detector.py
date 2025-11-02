@@ -5,6 +5,7 @@ from typing import Dict, List, Any, Tuple
 from google import genai
 from google.genai import types
 
+
 class RiskDetector:
     """Detects risky clauses in legal documents using AI-powered legal analysis"""
     

@@ -4,7 +4,21 @@ import logging
 from typing import Optional
 from dotenv import load_dotenv
 
-# Set up logging
+from fastapi import FastAPI, UploadFile, File, HTTPException, status
+from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from otp_routes import router as otp_router
+
+from job_queue import job_queue, JobStatus
+from services import (
+    document_service, clause_service, chat_service, explainer_service, export_service,
+    privacy_service, diff_service, save_upload_file
+)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 # Add current directory and parent directory to Python path
@@ -14,17 +28,25 @@ sys.path.insert(0, current_dir)
 sys.path.insert(0, parent_dir)
 
 # Load environment variables from .env file
-load_dotenv(os.path.join(parent_dir, '.env'))
+env_path = os.path.join(parent_dir, '.env')
+if not os.path.exists(env_path):
+    logger.error(f".env file not found at {env_path}")
+    raise FileNotFoundError(f".env file not found at {env_path}")
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, status
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
+load_dotenv(env_path)
 
-from job_queue import job_queue, JobStatus
-from services import (
-    document_service, clause_service, chat_service, explainer_service, export_service,
-    privacy_service, diff_service, save_upload_file
-)
+# Single email credential check
+email_user = os.getenv('EMAIL_USER')
+email_password = os.getenv('EMAIL_PASSWORD')
+
+if not email_user or not email_password:
+    logger.error("Email credentials missing in .env file!")
+    raise ValueError("Email credentials not configured")
+
+logger.info(f"Email configuration loaded for: {email_user}")
+
+
+
 
 app = FastAPI(title="Legal Redline Sandbox - API")
 
@@ -52,6 +74,69 @@ async def get_job_status(job_id: str):
         raise HTTPException(status_code=404, detail="Job not found")
     
     return job.to_dict()
+
+
+
+
+# otp verification routes 
+app.include_router(otp_router, prefix="/api/otp", tags=["OTP"])
+
+
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
+# After loading .env
+if not os.getenv('EMAIL_USER') or not os.getenv('EMAIL_PASSWORD'):
+    logger.error("Email credentials missing in .env file!")
+    logger.info("Please set EMAIL_USER and EMAIL_PASSWORD in your .env file")
+else:
+    logger.info("Email credentials loaded successfully")
+
+
+
+
+
+# Near the top after imports
+import os
+import logging
+from dotenv import load_dotenv
+
+# Set up logging first
+# logging.basicConfig(
+#     level=logging.INFO,
+#     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+# )
+# logger = logging.getLogger(__name__)
+
+# Load environment variables early
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+env_path = os.path.join(parent_dir, '.env')
+
+if not os.path.exists(env_path):
+    logger.error(f".env file not found at {env_path}")
+    raise FileNotFoundError(f".env file not found at {env_path}")
+
+load_dotenv(env_path)
+
+# Validate email credentials
+email_user = os.getenv('EMAIL_USER')
+email_password = os.getenv('EMAIL_PASSWORD')
+
+if not email_user or not email_password:
+    logger.error("Email credentials missing in .env file!")
+    logger.error("Please set EMAIL_USER and EMAIL_PASSWORD in your .env file")
+    raise ValueError("Email credentials not configured")
+
+logger.info(f"Email configuration loaded for: {email_user}")
+
+# Remove duplicate logging configuration
+# Delete or comment out the following lines that appear later in the file:
+# logger = logging.getLogger(__name__)
+# logging.basicConfig(level=logging.INFO)
+
+
 
 @app.get("/api/jobs")
 async def get_all_jobs():

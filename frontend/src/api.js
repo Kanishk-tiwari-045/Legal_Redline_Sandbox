@@ -1,14 +1,92 @@
 const API_BASE = import.meta.env.VITE_API_BASE || '/api'
+const AUTH_API_BASE = import.meta.env.VITE_AUTH_API_BASE || 'http://localhost:5001'
+
+// Helper to get auth token
+function getAuthToken() {
+  return localStorage.getItem('auth_token')
+}
+
+// Helper to get auth headers
+function getAuthHeaders() {
+  const token = getAuthToken()
+  return token ? { 'Authorization': `Bearer ${token}` } : {}
+}
 
 async function apiCall(url, options = {}) {
   const response = await fetch(`${API_BASE}${url}`, {
     ...options,
     headers: {
       ...options.headers,
+      ...getAuthHeaders(),
     }
   })
   
   return response
+}
+
+// Auth API functions
+export async function sendOtp(email) {
+  const res = await fetch(`${AUTH_API_BASE}/auth/send-otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  })
+  return res.json()
+}
+
+export async function verifyOtp(email, otp) {
+  const res = await fetch(`${AUTH_API_BASE}/auth/verify-otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, otp }),
+  })
+  return res.json()
+}
+
+export async function verifyToken() {
+  const token = getAuthToken()
+  if (!token) return { valid: false }
+  
+  try {
+    const res = await fetch(`${AUTH_API_BASE}/auth/verify-token`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
+    return res.json()
+  } catch (error) {
+    return { valid: false }
+  }
+}
+
+export async function logout() {
+  const token = getAuthToken()
+  if (!token) return
+  
+  try {
+    await fetch(`${AUTH_API_BASE}/auth/logout`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
+  } catch (error) {
+    console.error('Logout error:', error)
+  }
+  
+  // Clear local storage
+  localStorage.removeItem('auth_token')
+  localStorage.removeItem('auth_user')
+  localStorage.removeItem('auth_session_id')
+}
+
+export function isAuthenticated() {
+  return !!getAuthToken()
+}
+
+export function getAuthUser() {
+  const user = localStorage.getItem('auth_user')
+  return user ? JSON.parse(user) : null
 }
 
 // Job API
@@ -151,5 +229,7 @@ export function startJobPolling(jobId, onUpdate, interval = 2000) {
 export default { 
   uploadFile, rewriteClause, startChat, explainTerm,
   analyzeClause, translateToPlain, getHistoricalContext, exportReport, 
-  generateDiff, redactDocument, processPrivacy, getJobStatus, getAllJobs, startJobPolling
+  generateDiff, redactDocument, processPrivacy, getJobStatus, getAllJobs, startJobPolling,
+  // Auth exports
+  sendOtp, verifyOtp, verifyToken, logout, isAuthenticated, getAuthUser
 }
