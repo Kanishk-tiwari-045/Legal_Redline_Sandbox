@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useAppState } from '../state/StateContext'
 import { toast } from 'react-toastify'
 import api from '../api';
@@ -6,7 +6,6 @@ import OtpAuth from '../components/OtpAuth';
 
 export default function UploadPage() {
   const { state, dispatch } = useAppState()
-  const { sessionId } = state;
   const [file, setFile] = useState(null)
   const [forceOcr, setForceOcr] = useState(false)
   const [uploadJob, setUploadJob] = useState(null)
@@ -78,8 +77,6 @@ export default function UploadPage() {
   }, [isAuthenticated])
 
   async function checkExistingJobs() {
-    if (!sessionId) return;
-
     try {
       const jobs = await api.getAllJobs()
       console.log('Existing jobs:', jobs)
@@ -113,12 +110,6 @@ export default function UploadPage() {
 
   async function onUpload() {
     if (!file) return
-
-    // Check if the session is ready before trying to upload
-    if (!sessionId) {
-      toast.error("Session is not ready. Please wait a moment.");
-      return;
-    }
     
     try {
       console.log('Starting upload for file:', file.name)

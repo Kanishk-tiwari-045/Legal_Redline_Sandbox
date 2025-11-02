@@ -8,6 +8,7 @@ frontend/node_modules/
 backend/__pycache__
 backend/venv/
 backend/.env
+google-credentials.json
 auth/node_modules
 auth/.env
 frontend/.env

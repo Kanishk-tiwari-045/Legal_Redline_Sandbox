@@ -8,17 +8,16 @@ const getInitialState = () => {
     const savedState = localStorage.getItem(STORAGE_KEY)
     if (savedState) {
       const parsedState = JSON.parse(savedState)
-      // Merge with default structure
+      // Merge with default structure to handle version changes
       return {
-        sessionId: null, // Wait for App.jsx to provide this
-
+        sessionId: parsedState.sessionId || Math.random().toString(36).substr(2, 9),
         sessionStartTime: parsedState.sessionStartTime || new Date().toISOString(),
-        resetFlag: 0,
+        resetFlag: 0, // Always reset this on page load
         document: parsedState.document || null,
         riskyClauses: parsedState.riskyClauses || [],
         rewriteHistory: parsedState.rewriteHistory || {},
-        // REMOVED chatHistory
-        activeJobs: {},
+        chatHistory: parsedState.chatHistory || [],
+        activeJobs: {}, // Don't persist active jobs
         jobResults: parsedState.jobResults || {},
         activities: parsedState.activities || []
       }
@@ -29,14 +28,13 @@ const getInitialState = () => {
   
   // Fallback to default initial state
   return {
-    sessionId: null, // Wait for App.jsx to provide this
-
+    sessionId: Math.random().toString(36).substr(2, 9),
     sessionStartTime: new Date().toISOString(),
     resetFlag: 0,
     document: null,
     riskyClauses: [],
     rewriteHistory: {},
-    // REMOVED chatHistory
+    chatHistory: [],
     activeJobs: {},
     jobResults: {},
     activities: []
@@ -47,13 +45,6 @@ const initialState = getInitialState()
 
 function reducer(state, action) {
   switch (action.type) {
-    // This is called by App.jsx after it gets a session ID from the backend
-    case 'SET_CHAT_SESSION':
-      return {
-        ...state,
-        sessionId: action.payload,
-      };
-
     case 'LOG_ACTIVITY':
       return {
         ...state,
@@ -105,18 +96,18 @@ function reducer(state, action) {
         }]
       }
     
-    // case 'ADD_CHAT_MESSAGE':
-    //   return {
-    //     ...state,
-    //     chatHistory: [...state.chatHistory, action.payload],
-    //     activities: [...state.activities, {
-    //       id: Date.now(),
-    //       timestamp: new Date().toISOString(),
-    //       type: 'chat_interaction',
-    //       description: `Chat: ${action.payload.type === 'user' ? 'User question' : 'AI response'}`,
-    //       data: { messageType: action.payload.type }
-    //     }]
-    //   }
+    case 'ADD_CHAT_MESSAGE':
+      return {
+        ...state,
+        chatHistory: [...state.chatHistory, action.payload],
+        activities: [...state.activities, {
+          id: Date.now(),
+          timestamp: new Date().toISOString(),
+          type: 'chat_interaction',
+          description: `Chat: ${action.payload.type === 'user' ? 'User question' : 'AI response'}`,
+          data: { messageType: action.payload.type }
+        }]
+      }
     
     case 'ADD_JOB':
       return {
@@ -146,8 +137,7 @@ function reducer(state, action) {
     case 'RESET_SESSION':
       return {
         ...initialState,
-        sessionId: null, // Reset session ID
-
+        sessionId: Math.random().toString(36).substr(2, 9),
         sessionStartTime: new Date().toISOString(),
         resetFlag: state.resetFlag + 1, // Increment reset counter
         activities: [{

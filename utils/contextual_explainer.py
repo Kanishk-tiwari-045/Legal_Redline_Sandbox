@@ -8,10 +8,14 @@ import re
 import json
 from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass
+from dotenv import load_dotenv
 from google.cloud import aiplatform
 from google.cloud import discoveryengine_v1 as discoveryengine
 from google.cloud.aiplatform import gapic as aiplatform_gapic
 import logging
+
+# Load environment variables
+load_dotenv()
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -52,6 +56,8 @@ class ContextualExplainer:
             self.project_id = os.getenv("GOOGLE_CLOUD_PROJECT_ID")
             self.location = os.getenv("VERTEX_AI_LOCATION", "us-central1")
             self.discovery_location = os.getenv("DISCOVERY_ENGINE_LOCATION", "global")
+            self.app_id = os.getenv("LEGAL_APP_ID", "legal-rag-app")  # Use app ID for Enterprise Edition
+            self.collection_id = os.getenv("LEGAL_COLLECTION_ID", "default_collection")
             
             if not self.project_id:
                 logger.warning("GOOGLE_CLOUD_PROJECT_ID environment variable not set - running in fallback mode")
@@ -73,9 +79,9 @@ class ContextualExplainer:
                     self.discovery_client = None
                     self.use_rag = False
                     
-                # Knowledge base configuration
+                # Knowledge base configuration - using app for Enterprise Edition
                 self.knowledge_bases = {
-                    "legal_definitions": f"projects/{self.project_id}/locations/{self.discovery_location}/collections/default_collection/dataStores/legal-definitions"
+                    "legal_definitions": f"projects/{self.project_id}/locations/{self.discovery_location}/collections/{self.collection_id}/engines/{self.app_id}/servingConfigs/default_search"
                 } if self.project_id else {}
             
             # Legal terminology patterns for automatic detection
@@ -248,20 +254,25 @@ class ContextualExplainer:
             return self._fallback_historical_context(clause_text)
     
     def _search_knowledge_base(self, kb_type: str, query: str, max_results: int = 5) -> List[Dict]:
-        """Search a specific knowledge base using Discovery Engine"""
+        """Search a specific knowledge base using Discovery Engine (Enterprise Edition)."""
         try:
-            # Check if RAG is available
             if not self.use_rag or not self.discovery_client:
                 logger.info(f"RAG not available for knowledge base search: {kb_type}")
                 return []
-                
+
             if not self.knowledge_bases or kb_type not in self.knowledge_bases:
                 logger.warning(f"Knowledge base {kb_type} not configured or available")
                 return []
-            
-            # Create search request
+
+            # Construct the serving config path from the app configuration
+            serving_config_path = self.knowledge_bases.get(kb_type)
+            if not serving_config_path:
+                 logger.warning(f"Serving config for {kb_type} not found.")
+                 return []
+
+            # Create search request with Enterprise features, matching the working curl command
             request = discoveryengine.SearchRequest(
-                serving_config=f"{self.knowledge_bases[kb_type]}/servingConfigs/default_config",
+                serving_config=serving_config_path,
                 query=query,
                 page_size=max_results,
                 query_expansion_spec=discoveryengine.SearchRequest.QueryExpansionSpec(
@@ -269,19 +280,33 @@ class ContextualExplainer:
                 ),
                 spell_correction_spec=discoveryengine.SearchRequest.SpellCorrectionSpec(
                     mode=discoveryengine.SearchRequest.SpellCorrectionSpec.Mode.AUTO
+                ),
+                content_search_spec=discoveryengine.SearchRequest.ContentSearchSpec(
+                    extractive_content_spec=discoveryengine.SearchRequest.ContentSearchSpec.ExtractiveContentSpec(
+                        max_extractive_answer_count=1
+                    )
                 )
             )
-            
+
             # Execute search
             response = self.discovery_client.search(request)
-            
+
             # Extract results
             results = []
             for result in response.results:
                 doc = result.document
+                content = ""
+                # Enterprise returns extractive answers, so we prioritize them
+                if doc.derived_struct_data.get("extractive_answers"):
+                    content = doc.derived_struct_data["extractive_answers"][0].get("content", "")
+                
+                # Fallback to snippet if no extractive answer is found
+                if not content:
+                    content = doc.derived_struct_data.get("snippet", "")
+
                 results.append({
                     "title": doc.derived_struct_data.get("title", ""),
-                    "content": doc.derived_struct_data.get("extractive_answers", [{}])[0].get("content", ""),
+                    "content": content,
                     "snippet": doc.derived_struct_data.get("snippet", ""),
                     "uri": doc.derived_struct_data.get("link", ""),
                     "relevance_score": getattr(result, 'relevance_score', 0.0)
@@ -289,11 +314,9 @@ class ContextualExplainer:
             
             logger.info(f"Found {len(results)} results from knowledge base {kb_type}")
             return results
-            
+
         except Exception as e:
             logger.error(f"Error searching knowledge base {kb_type}: {e}")
-            # Return empty results instead of crashing
-            return []
             return []
     
     def _generate_term_explanation(self, term: str, context: str, 
