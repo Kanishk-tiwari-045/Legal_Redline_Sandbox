@@ -3,9 +3,27 @@ import cors from "cors";
 import nodemailer from "nodemailer";
 import crypto from "crypto";
 import dotenv from "dotenv";
+import fs from "fs";
+import path from "path";
 import jwt from "jsonwebtoken";
 
-dotenv.config();
+// Load .env: prefer local auth-server/.env, fall back to repository root ../.env
+(() => {
+  const localEnv = path.resolve(process.cwd(), '.env');
+  const parentEnv = path.resolve(process.cwd(), '..', '.env');
+
+  if (fs.existsSync(localEnv)) {
+    dotenv.config({ path: localEnv });
+    console.log(`🔐 Loaded environment from ${localEnv}`);
+  } else if (fs.existsSync(parentEnv)) {
+    dotenv.config({ path: parentEnv });
+    console.log(`🔐 Loaded environment from ${parentEnv}`);
+  } else {
+    // Last resort: attempt default lookup (process.cwd())
+    dotenv.config();
+    console.log('⚠️  No .env found in auth-server or parent directory; dotenv attempted default load.');
+  }
+})();
 
 const app = express();
 app.use(cors({
@@ -246,7 +264,7 @@ setInterval(() => {
   });
 }, 5 * 60 * 1000);
 
-const PORT = process.env.PORT || 5001;
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`✅ Auth Server running on http://localhost:${PORT}`);
   console.log(`📧 Email configured: ${process.env.EMAIL_USER}`);
