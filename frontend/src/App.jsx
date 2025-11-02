@@ -99,6 +99,12 @@ export default function App() {
 
       // Delete the token from storage
       localStorage.removeItem('accessToken');
+      localStorage.removeItem('sessionId');
+
+      // Set a temporary flag in sessionStorage.
+      // sessionStorage is perfect because it survives a page reload,
+      // but is deleted when you close the browser tab.
+      sessionStorage.setItem('showNewSessionToast', 'true');
       
       // Navigate to upload page
       navigate('/')
