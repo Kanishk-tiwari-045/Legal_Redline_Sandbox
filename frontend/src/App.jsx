@@ -11,8 +11,11 @@ import PrivacyPage from './pages/PrivacyPage'
 import DiffPage from './pages/DiffPage'
 import Footer from './components/Footer.jsx'
 import Header from './components/Header.jsx'
+import Footer from './components/Footer.jsx'
+import Header from './components/Header.jsx'
 import { ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
+import api from './api'
 
 import { v4 as uuidv4 } from 'uuid';
 import api from './api'; // The api.js file you just created
@@ -84,10 +87,13 @@ export default function App() {
   const handleLeaveSession = () => {
     // Show confirmation dialog
     const confirmed = window.confirm(
-      '⚠️ Are you sure you want to leave the session?\n\nThis will:\n• Clear all uploaded documents\n• Reset analysis results\n• Clear chat history\n• Remove all rewrite history\n• Permanently delete all saved data\n\nThis action cannot be undone.'
+      '⚠️ Are you sure you want to leave the session?\n\nThis will:\n• Clear all uploaded documents\n• Reset analysis results\n• Clear chat history\n• Remove all rewrite history\n• Log you out of authentication\n• Permanently delete all saved data\n\nThis action cannot be undone.'
     )
     
     if (confirmed) {
+      // Logout from auth server
+      await api.logout()
+      
       // Reset the session state (this will also clear localStorage via enhancedDispatch)
       dispatch({ type: 'RESET_SESSION' })
 
@@ -117,7 +123,10 @@ export default function App() {
     <div className="min-h-screen bg-gray-900">
       
       <Header handleLeaveSession={handleLeaveSession} />
+<<<<<<< HEAD
 
+=======
+>>>>>>> ishita
 
       {/* This component is the "Toaster" */}
       <ToastContainer

@@ -7,6 +7,7 @@ from google.genai import types
 from .guardrails import InputValidator, ContentFilter, rate_limit
 
 
+
 class RiskDetector:
     """Detects risky clauses in legal documents using AI-powered legal analysis"""
     

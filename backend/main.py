@@ -5,17 +5,6 @@ from typing import Optional, List
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, status
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
-from otp_routes import router as otp_router
-
-from job_queue import job_queue, JobStatus
-from services import (
-    document_service, clause_service, chat_service, explainer_service, export_service,
-    privacy_service, diff_service, save_upload_file
-)
-
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -46,9 +35,10 @@ if not email_user or not email_password:
 
 logger.info(f"Email configuration loaded for: {email_user}")
 
-
-
 load_dotenv(os.path.join(parent_dir, '.env'))
+
+
+from otp_routes import router as otp_router
 
 from fastapi import (
     FastAPI, UploadFile, File, HTTPException, 
@@ -64,6 +54,7 @@ from sqlalchemy.orm import Session
 from . import models, database, schemas, security
 
 from .database import get_db
+
 from job_queue import job_queue, JobStatus
 from services import (
     document_service, clause_service, chat_service, explainer_service, export_service,
@@ -243,6 +234,69 @@ def get_chat_history(
     
     messages = db.query(models.ChatMessage).filter(models.ChatMessage.session_id == session_id).order_by(models.ChatMessage.timestamp.asc()).all()
     return messages
+
+
+
+
+# otp verification routes 
+app.include_router(otp_router, prefix="/api/otp", tags=["OTP"])
+
+
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
+# After loading .env
+if not os.getenv('EMAIL_USER') or not os.getenv('EMAIL_PASSWORD'):
+    logger.error("Email credentials missing in .env file!")
+    logger.info("Please set EMAIL_USER and EMAIL_PASSWORD in your .env file")
+else:
+    logger.info("Email credentials loaded successfully")
+
+
+
+
+
+# Near the top after imports
+import os
+import logging
+from dotenv import load_dotenv
+
+# Set up logging first
+# logging.basicConfig(
+#     level=logging.INFO,
+#     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+# )
+# logger = logging.getLogger(__name__)
+
+# Load environment variables early
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+env_path = os.path.join(parent_dir, '.env')
+
+if not os.path.exists(env_path):
+    logger.error(f".env file not found at {env_path}")
+    raise FileNotFoundError(f".env file not found at {env_path}")
+
+load_dotenv(env_path)
+
+# Validate email credentials
+email_user = os.getenv('EMAIL_USER')
+email_password = os.getenv('EMAIL_PASSWORD')
+
+if not email_user or not email_password:
+    logger.error("Email credentials missing in .env file!")
+    logger.error("Please set EMAIL_USER and EMAIL_PASSWORD in your .env file")
+    raise ValueError("Email credentials not configured")
+
+logger.info(f"Email configuration loaded for: {email_user}")
+
+# Remove duplicate logging configuration
+# Delete or comment out the following lines that appear later in the file:
+# logger = logging.getLogger(__name__)
+# logging.basicConfig(level=logging.INFO)
+
+
 
 
 
@@ -590,6 +644,20 @@ async def get_all_jobs(current_user: models.User = Depends(get_current_user)):
 @app.get("/")
 async def root():
     return {"message": "Legal Redline Sandbox API", "docs": "/docs"}
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    if isinstance(exc, HTTPException):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail}
+        )
+    
+    logger.error(f"Unexpected error: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"}
+    )
 
 if __name__ == "__main__":
     import uvicorn

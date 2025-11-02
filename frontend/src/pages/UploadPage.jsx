@@ -12,30 +12,53 @@ export default function UploadPage() {
   const [uploadJob, setUploadJob] = useState(null)
   const isInitialMount = useRef(true);
   const [showOtpModal, setShowOtpModal] = useState(false);
-  const [isVerified, setIsVerified] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authUser, setAuthUser] = useState(null);
+
+  // Check authentication status on mount
+  useEffect(() => {
+    checkAuth();
+  }, []);
+
+  const checkAuth = async () => {
+    const token = localStorage.getItem('auth_token');
+    if (token) {
+      const verification = await api.verifyToken();
+      if (verification.valid) {
+        setIsAuthenticated(true);
+        setAuthUser(verification.user);
+      } else {
+        // Token invalid, clear it
+        handleLogout();
+      }
+    }
+  };
+
+  const handleLogout = () => {
+    api.logout();
+    setIsAuthenticated(false);
+    setAuthUser(null);
+  };
 
   // Reset local state when session resets
   useEffect(() => {
     if (isInitialMount.current) {
       isInitialMount.current = false;
-      return; // Skip the effect on the first run
+      return;
     }
 
     setFile(null)
     setForceOcr(false)
     setUploadJob(null)
-
-    // TRIGGER 3: "New session" toast
     toast.info("New session started");
   }, [state.resetFlag])
 
   // Check for existing completed jobs on component mount
   useEffect(() => {
-    // Only run this check *after* the sessionId is available
-    if (sessionId) {
+    if (isAuthenticated) {
       checkExistingJobs()
     }
-  }, [sessionId]) // <-- Run this effect when sessionId changes, when it's loaded)
+  }, [isAuthenticated])
 
   async function checkExistingJobs() {
     if (!sessionId) return;
@@ -44,7 +67,6 @@ export default function UploadPage() {
       const jobs = await api.getAllJobs()
       console.log('Existing jobs:', jobs)
       
-      // Find the most recent completed document processing job
       const completedJob = jobs
         .filter(job => job.job_type === 'document_processing' && job.status === 'completed')
         .sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at))[0]
@@ -54,7 +76,6 @@ export default function UploadPage() {
         dispatch({ type: 'SET_DOCUMENT', payload: completedJob.result.document })
         dispatch({ type: 'SET_RISKY', payload: completedJob.result.risky_clauses })
         
-        // Log activity for found job
         dispatch({
           type: 'LOG_ACTIVITY',
           payload: {
@@ -69,7 +90,6 @@ export default function UploadPage() {
       }
     } catch (error) {
       console.error('Failed to check existing jobs:', error)
-      // Add error toast
       toast.error("Failed to check for existing jobs.");
     }
   }
@@ -88,11 +108,8 @@ export default function UploadPage() {
       const response = await api.uploadFile(file, forceOcr)
       console.log('Upload response:', response)
       
-      
       if (response.job_id) {
-        // TRIGGER 1: "Document is uploaded" toast
-        toast.info(`Processing: ${file.name}`); // <-- ADDED
-
+        toast.info(`Processing: ${file.name}`);
         setUploadJob({ job_id: response.job_id, status: 'processing' })
         dispatch({ 
           type: 'ADD_JOB', 
@@ -103,7 +120,6 @@ export default function UploadPage() {
           } 
         })
         
-        // Log activity
         dispatch({
           type: 'LOG_ACTIVITY',
           payload: {
@@ -113,13 +129,11 @@ export default function UploadPage() {
           }
         })
         
-        // Start polling for job completion
         const cleanup = api.startJobPolling(response.job_id, (job) => {
           console.log('Job update:', job)
           setUploadJob(job)
           dispatch({ type: 'UPDATE_JOB', payload: job })
           
-          // Handle streaming updates - update state with partial results
           if (job.result) {
             if (job.result.document) {
               dispatch({ type: 'SET_DOCUMENT', payload: job.result.document })
@@ -132,11 +146,8 @@ export default function UploadPage() {
           if (job.status === 'completed' && job.result) {
             console.log('Job completed with result:', job.result)
             const riskCount = job.result.risky_clauses?.length || 0;
-            
-            // TRIGGER 2: "Analysis complete" toast
             toast.success(`Analysis complete: ${riskCount} risks found!`);
             
-            // Log completion activity
             dispatch({
               type: 'LOG_ACTIVITY',
               payload: {
@@ -152,35 +163,43 @@ export default function UploadPage() {
             setUploadJob(null)
           } else if (job.status === 'failed') {
             console.error('Job failed:', job.error)
-            // Add error toast
             toast.error(`Analysis failed: ${job.error || 'Unknown error'}`);
             setUploadJob(job)
           }
         }, 3000)
         
-        // Store cleanup function
         window.currentJobCleanup = cleanup
       }
     } catch (error) {
       console.error('Upload failed:', error)
-      // Add error toast
       toast.error(`Upload failed: ${error.message}`);
       setUploadJob({ status: 'failed', error: error.message })
     }
   }
 
-  const handleUploadClick = () => {
-    if (!isVerified) {
+  const handleFileSelect = (e) => {
+    const selectedFile = e.target.files[0];
+    if (selectedFile) {
+      setFile(selectedFile);
+      // Show OTP modal if not authenticated
+      if (!isAuthenticated) {
+        setShowOtpModal(true);
+      }
+    }
+  };
+
+  const handleVerificationSuccess = (token, user) => {
+    setIsAuthenticated(true);
+    setAuthUser(user);
+    toast.success(`Welcome, ${user.email}!`);
+  };
+
+  const handleAnalyzeClick = () => {
+    if (!isAuthenticated) {
       setShowOtpModal(true);
     } else {
       onUpload();
     }
-  };
-
-  const handleVerificationSuccess = () => {
-    setIsVerified(true);
-    setShowOtpModal(false);
-    onUpload();
   };
 
   return (
@@ -193,6 +212,30 @@ export default function UploadPage() {
             Document Analysis
           </h1>
           <p className="text-gray-300">AI-powered legal document risk analysis</p>
+          
+          {/* Auth Status Badge */}
+          {/* {isAuthenticated && authUser && (
+            <div className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-green-900/30 border border-green-700 rounded-full">
+              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+              <span className="text-green-300 text-sm font-medium">
+                Authenticated: {authUser.email}
+              </span>
+              <button
+                onClick={handleLogout}
+                className="ml-2 text-green-400 hover:text-green-300 text-xs underline"
+              >
+                Logout
+              </button>
+            </div>
+          )} */}
+          {isAuthenticated && authUser && (
+            <div className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-green-900/30 border border-green-700 rounded-full">
+              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+              <span className="text-green-300 text-sm font-medium">
+                🔐 Secured: {authUser.email}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Upload Card */}
@@ -206,7 +249,7 @@ export default function UploadPage() {
               <input 
                 type="file" 
                 accept=".pdf,.png,.jpg,.jpeg,.tiff,.bmp"
-                onChange={(e) => setFile(e.target.files[0])} 
+                onChange={handleFileSelect}
                 className="block w-full text-sm text-gray-300 file:mr-4 file:py-3 file:px-6 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 file:cursor-pointer cursor-pointer border border-gray-600 bg-gray-700 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               
@@ -237,7 +280,7 @@ export default function UploadPage() {
             {/* Action Buttons */}
             <div className="flex gap-4 pt-4">
               <button 
-                onClick={handleUploadClick} 
+                onClick={handleAnalyzeClick}
                 disabled={!file || uploadJob?.status === 'processing'}
                 className={`flex-1 py-4 px-6 rounded-lg font-semibold text-white transition-all duration-200 ${
                   !file || uploadJob?.status === 'processing'
@@ -255,8 +298,9 @@ export default function UploadPage() {
                   </span>
                 ) : (
                   <span className="flex items-center justify-center gap-2">
+                    {!isAuthenticated && <span>🔐</span>}
                     <span>🚀</span>
-                    Analyze Document
+                    {isAuthenticated ? 'Analyze Document' : 'Authenticate & Analyze'}
                   </span>
                 )}
               </button>
@@ -277,6 +321,13 @@ export default function UploadPage() {
             </div>
           </div>
         </div>
+
+        {/* OTP Modal */}
+        <OtpAuth
+          isOpen={showOtpModal}
+          onClose={() => setShowOtpModal(false)}
+          onVerified={handleVerificationSuccess}
+        />
 
         {/* Processing Status */}
         {uploadJob && (

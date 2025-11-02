@@ -18,6 +18,7 @@ export default function PrivacyPage() {
   const [privacyJob, setPrivacyJob] = useState(null)
   const [privacyResults, setPrivacyResults] = useState(null)
   const [activeTab, setActiveTab] = useState('scan')
+  const [encryptedVersion, setEncryptedVersion] = useState(null);
   const isInitialMount = useRef(true);
 
   // Reset page state when session resets
@@ -143,6 +144,25 @@ export default function PrivacyPage() {
     a.click()
     URL.revokeObjectURL(url)
   }
+
+  const handleProcessing = async () => {
+    try {
+      setLoading(true);
+      const result = await api.processPrivacy(
+        content,
+        selectedInfoTypes,
+        redactionLevel
+      );
+      
+      setProcessedContent(result.processed_text);
+      setEncryptedVersion(result.encrypted_version);
+      
+    } catch (error) {
+      setError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (!hasDocument) {
     return (
@@ -430,6 +450,18 @@ export default function PrivacyPage() {
                       placeholder="Redacted content will appear here..."
                     />
                   </div>
+                </div>
+              )}
+
+              {/* Add encrypted version display */}
+              {encryptedVersion && (
+                <div className="mt-4 p-4 bg-gray-800 rounded-lg">
+                  <h3 className="text-sm font-medium text-gray-300 mb-2">
+                    Encrypted Version (for secure storage):
+                  </h3>
+                  <pre className="text-xs text-gray-400 overflow-x-auto">
+                    {encryptedVersion}
+                  </pre>
                 </div>
               )}
             </div>

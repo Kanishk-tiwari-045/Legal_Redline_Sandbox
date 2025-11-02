@@ -5,7 +5,9 @@ utils/__pycache__
 node_modules/
 .DS_Store
 frontend/node_modules/
-backend/venv/
 backend/__pycache__
-backend/.env 
-node_modules
+backend/venv/
+backend/.env
+auth/node_modules
+auth/.env
+frontend/.env

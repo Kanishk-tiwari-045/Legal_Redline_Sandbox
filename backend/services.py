@@ -483,31 +483,42 @@ class PrivacyService:
         try:
             # Only initialize if Google Cloud project ID is available
             project_id = os.environ.get("GOOGLE_CLOUD_PROJECT_ID")
+            dp_sigma = float(os.getenv('DP_SIGMA', '0.2'))
             if project_id:
-                self.privacy_processor = PrivacyProcessor(project_id)
+                self.privacy_processor = PrivacyProcessor(project_id, dp_sigma)
             else:
                 self.privacy_processor = None
         except Exception:
             self.privacy_processor = None
             
-    async def redact_async(self, job: Job) -> Dict[str, Any]:
-        """Async wrapper for privacy redaction"""
+    async def redact_async(self, job: Job, info_types: list = None, redaction_level: str = "high"):
+        """Asynchronous AES + Gaussian DP privacy redaction"""
         if not self.privacy_processor:
             return {"error": "Privacy processor not configured (missing GOOGLE_CLOUD_PROJECT_ID)"}
-            
-        text_to_redact = job.data.get("text", "")
-        
-        job_queue.update_progress(job.job_id, 20)
-        
+
+        text_to_process = job.data.get("text", "")
+        job_queue.update_progress(job.job_id, 10)
+
         loop = asyncio.get_event_loop()
+
+        # Run secure AES + DP redaction asynchronously
+        encrypted_result = await loop.run_in_executor(
+            None,
+            self.privacy_processor.process_text_securely,
+            text_to_process
+        )
+
+        job_queue.update_progress(job.job_id, 70)
+
+        # Decrypt to get final redacted version for output
         redacted_text = await loop.run_in_executor(
             None,
-            self.privacy_processor.redact_text,
-            text_to_redact
+            self.privacy_processor.decrypt_and_show,
+            encrypted_result
         )
-        
-        job_queue.update_progress(job.job_id, 90)
-        
+
+        job_queue.update_progress(job.job_id, 95)
+
         return {"redacted_text": redacted_text}
 
 # Service instances
