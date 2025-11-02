@@ -1,11 +1,9 @@
 import React, { useState, useEffect } from 'react'
 import { useAppState } from '../state/StateContext'
 import api from '../api'
-import { toast } from 'react-toastify'
 
 export default function SandboxPage() {
   const { state, dispatch } = useAppState()
-  const { sessionId } = state;
   const [selectedIdx, setSelectedIdx] = useState(0)
   const [rewrite, setRewrite] = useState('')
   const [loading, setLoading] = useState(false)
@@ -20,16 +18,7 @@ export default function SandboxPage() {
 
   async function onRewrite() {
     if (!clause) return
-
-    if (!sessionId) {
-      toast.error("Session is not ready. Please wait a moment.");
-      return;
-    }
-
     setLoading(true)
-
-    // TRIGGER 3 & 5: "Generating rewrite" / "Regenerating"
-    toast.info("Generating AI rewrite...");
     
     try {
       const controls = { 
@@ -58,13 +47,9 @@ export default function SandboxPage() {
               } else if (errorType === 'auth_error') {
                 userMessage += '\n\n⚙️ This appears to be a configuration issue. Please contact support.';
               }
-
-              toast.error(userMessage);
+              
               setRewrite(userMessage);
             } else {
-              // TRIGGER 4: "Generated AI Improved version"
-              toast.success("AI rewrite generated successfully!");
-
               const rewriteText = job.result.rewritten_clause || job.result.rewrite || JSON.stringify(job.result, null, 2)
               setRewrite(rewriteText)
               dispatch({ 
@@ -77,17 +62,11 @@ export default function SandboxPage() {
             setLoading(false)
           } else if (job.status === 'failed') {
             console.error('Rewrite job failed:', job.error)
-
-            const errorMsg = `Error: ${job.error || 'Rewrite failed'}`;
-            toast.error(errorMsg);
             setRewrite(`Error: ${job.error || 'Rewrite failed'}`)
             setLoading(false)
           }
         })
       } else {
-        // TRIGGER 4 (non-polling): "Generated AI Improved version"
-        toast.success("AI rewrite generated successfully!");
-
         setRewrite(res.rewrite || JSON.stringify(res))
         dispatch({ 
           type: 'ADD_REWRITE', 
@@ -98,8 +77,6 @@ export default function SandboxPage() {
         setLoading(false)
       }
     } catch (error) {
-      const errorMsg = `Error: ${error.message}`;
-      toast.error(errorMsg);
       setRewrite(`Error: ${error.message}`)
       setLoading(false)
     }
@@ -141,17 +118,8 @@ export default function SandboxPage() {
               
               <select 
                 onChange={(e) => {
-                  const newIdx = Number(e.target.value); 
-
-                  const newClause = state.riskyClauses?.[newIdx];
-                  
-                  setSelectedIdx(newIdx);
-                  setRewrite('');
-
-                  // TRIGGER 1 & 2: "Clause selected/changed"
-                  if (newClause) {
-                    toast.info(`Viewing Clause ${newIdx + 1}`);
-                  }
+                  setSelectedIdx(Number(e.target.value))
+                  setRewrite('')
                 }} 
                 value={selectedIdx}
                 className="w-full p-4 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent bg-gray-700 text-white"
@@ -277,8 +245,7 @@ export default function SandboxPage() {
                         <button
                           onClick={() => {
                             navigator.clipboard.writeText(rewrite)
-                            // TRIGGER 6: "Copied to clipboard"
-                            toast.success('Rewritten clause copied to clipboard!')
+                            alert('Rewritten clause copied to clipboard!')
                           }}
                           className="px-6 py-3 bg-gray-600 text-gray-300 rounded-lg font-semibold hover:bg-gray-500 transition-colors duration-200"
                         >

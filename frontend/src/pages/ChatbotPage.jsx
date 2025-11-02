@@ -1,17 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useAppState } from '../state/StateContext'
 import api from '../api'
-import { toast } from 'react-toastify'
 
 export default function ChatbotPageNew() {
   const { state } = useAppState()
-  const { sessionId } = state // Get the real sessionId from the global state
   const [generalHistory, setGeneralHistory] = useState([])
   const [documentHistory, setDocumentHistory] = useState([])
   const [activeTab, setActiveTab] = useState('general')
   const [currentMessage, setCurrentMessage] = useState('')
   const [loading, setLoading] = useState(false)
-  const isInitialMount = useRef(true);
   
   // Critical refs for input management
   const textareaRef = useRef(null)
@@ -94,18 +91,12 @@ export default function ChatbotPageNew() {
 
   // Reset page state when session resets
   useEffect(() => {
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
-      return; // Skip the effect on the first run
-    }
-
     setGeneralHistory([])
     setDocumentHistory([])
     setCurrentMessage('')
     setActiveTab('general')
     setLoading(false)
     isUserTyping.current = false
-    toast.info("Chat session reset");
   }, [state.resetFlag])
 
   // Handle new messages - only scroll if user is not typing
@@ -157,17 +148,21 @@ export default function ChatbotPageNew() {
   }
 
   const handleSendMessage = async (isGeneral = true) => {
-    if (!currentMessage.trim() || !sessionId) {
-      if (!sessionId) toast.error("Session not initialized. Please wait.");
-      return;
-    }
+    if (!currentMessage.trim()) return
 
     const userMessage = currentMessage.trim()
+    
+    // Clear message but preserve focus state
     setCurrentMessage('')
+    
+    // Add user message immediately
     addMessage('user', userMessage, isGeneral)
     setLoading(true)
 
+    // Force scroll to show the new user message
     setTimeout(forceScrollToBottom, 100)
+
+    // Keep focus in input after sending (optional delay for better UX)
     setTimeout(() => {
       if (textareaRef.current) {
         textareaRef.current.focus()
@@ -176,9 +171,7 @@ export default function ChatbotPageNew() {
     }, 50)
 
     try {
-      // This object is perfectly constructed.
-      const fullChatData = {
-        session_id: sessionId,
+      const chatData = {
         type: isGeneral ? 'general' : 'document',
         prompt: userMessage,
         history: isGeneral ? generalHistory : documentHistory,
@@ -186,29 +179,21 @@ export default function ChatbotPageNew() {
           state.document.clauses?.map(c => c.text).join('\n') : ''
       }
 
-      // Call the new API endpoint
-      // Instead of `api.startChat(chatData)`, we call `api.post`
-      // 1. Call the startChat function from your api.js file
-      const response = await api.startChat(fullChatData)
+      const response = await api.startChat(chatData)
       
-      // 2. Access .job_id directly (since api.startChat already returns the JSON)
       if (response.job_id) {
         const cleanup = api.startJobPolling(response.job_id, (job) => {
           if (job.status === 'completed' && job.result) {
             addMessage('assistant', job.result.response, isGeneral)
             setLoading(false)
           } else if (job.status === 'failed') {
-            const errorMsg = "Sorry, I encountered an error. Please try again."
-            toast.error(errorMsg);
-            addMessage('assistant', errorMsg, isGeneral)
+            addMessage('assistant', 'Sorry, I encountered an error. Please try again.', isGeneral)
             setLoading(false)
           }
         })
       }
     } catch (error) {
-      const errorMsg = "Sorry, I encountered a network error. Please try again."
-      toast.error(errorMsg);
-      addMessage('assistant', errorMsg, isGeneral)
+      addMessage('assistant', 'Sorry, I encountered a network error. Please try again.', isGeneral)
       setLoading(false)
     }
   }
@@ -216,10 +201,8 @@ export default function ChatbotPageNew() {
   const clearHistory = (isGeneral = true) => {
     if (isGeneral) {
       setGeneralHistory([])
-      toast.success("General history cleared");
     } else {
       setDocumentHistory([])
-      toast.success("Document history cleared");
     }
   }
 
@@ -240,10 +223,7 @@ export default function ChatbotPageNew() {
           <h2 className="text-2xl font-bold text-white mb-4">📄 No Document Loaded</h2>
           <p className="text-gray-300 mb-6">Please upload a document first to use document-specific chat.</p>
           <button
-            onClick={() => {
-              setActiveTab('general')
-              toast.info("Switched to General Assistant");
-            }}
+            onClick={() => setActiveTab('general')}
             className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-6 py-3 rounded-lg font-semibold hover:from-indigo-600 hover:to-purple-600 transition-all duration-200"
           >
             Switch to General Chat
@@ -267,10 +247,7 @@ export default function ChatbotPageNew() {
           <div className="flex justify-center">
             <div className="bg-gray-700/50 backdrop-blur-sm rounded-xl p-1 flex space-x-1">
               <button
-                onClick={() => {
-                  setActiveTab('general')
-                  toast.info("Switched to General Assistant");
-                }}
+                onClick={() => setActiveTab('general')}
                 className={`px-6 py-3 rounded-lg font-semibold transition-all duration-200 text-sm ${
                   activeTab === 'general'
                     ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow-lg'
@@ -280,14 +257,8 @@ export default function ChatbotPageNew() {
                 🌟 General Assistant
               </button>
               <button
-                onClick={() => {
-                  if (state.document) {
-                    setActiveTab('document')
-                    toast.info("Switched to Document Q&A");
-                  } else {
-                    toast.warn("Please upload a document to use this tab.");
-                  }
-                }}
+                onClick={() => setActiveTab('document')}
+                disabled={!state.document}
                 className={`px-6 py-3 rounded-lg font-semibold transition-all duration-200 text-sm ${
                   activeTab === 'document'
                     ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow-lg'
