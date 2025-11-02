@@ -148,31 +148,7 @@ export function startJobPolling(jobId, onUpdate, interval = 2000) {
   return () => clearInterval(pollInterval) // Return cleanup function
 }
 
-export async function sendOtp(email) {
-  const response = await apiCall('/api/send-otp', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email })
-  });
-  
-  if (!response.ok) {
-    throw new Error('Failed to send OTP');
-  }
-  return response.json();
-}
 
-export async function verifyOtp(email, otp) {
-  const response = await apiCall('/api/verify-otp', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, otp })
-  });
-  
-  if (!response.ok) {
-    throw new Error('Invalid OTP');
-  }
-  return response.json();
-}
 
 export default { 
   uploadFile, rewriteClause, startChat, explainTerm,
