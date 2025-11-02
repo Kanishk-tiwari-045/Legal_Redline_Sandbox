@@ -5,6 +5,7 @@ import { toast } from 'react-toastify'
 
 export default function ChatbotPageNew() {
   const { state } = useAppState()
+  const { sessionId } = state // Get the real sessionId from the global state
   const [generalHistory, setGeneralHistory] = useState([])
   const [documentHistory, setDocumentHistory] = useState([])
   const [activeTab, setActiveTab] = useState('general')
@@ -156,21 +157,17 @@ export default function ChatbotPageNew() {
   }
 
   const handleSendMessage = async (isGeneral = true) => {
-    if (!currentMessage.trim()) return
+    if (!currentMessage.trim() || !sessionId) {
+      if (!sessionId) toast.error("Session not initialized. Please wait.");
+      return;
+    }
 
     const userMessage = currentMessage.trim()
-    
-    // Clear message but preserve focus state
     setCurrentMessage('')
-    
-    // Add user message immediately
     addMessage('user', userMessage, isGeneral)
     setLoading(true)
 
-    // Force scroll to show the new user message
     setTimeout(forceScrollToBottom, 100)
-
-    // Keep focus in input after sending (optional delay for better UX)
     setTimeout(() => {
       if (textareaRef.current) {
         textareaRef.current.focus()
@@ -179,7 +176,9 @@ export default function ChatbotPageNew() {
     }, 50)
 
     try {
-      const chatData = {
+      // This object is perfectly constructed.
+      const fullChatData = {
+        session_id: sessionId,
         type: isGeneral ? 'general' : 'document',
         prompt: userMessage,
         history: isGeneral ? generalHistory : documentHistory,
@@ -187,8 +186,12 @@ export default function ChatbotPageNew() {
           state.document.clauses?.map(c => c.text).join('\n') : ''
       }
 
-      const response = await api.startChat(chatData)
+      // Call the new API endpoint
+      // Instead of `api.startChat(chatData)`, we call `api.post`
+      // 1. Call the startChat function from your api.js file
+      const response = await api.startChat(fullChatData)
       
+      // 2. Access .job_id directly (since api.startChat already returns the JSON)
       if (response.job_id) {
         const cleanup = api.startJobPolling(response.job_id, (job) => {
           if (job.status === 'completed' && job.result) {
