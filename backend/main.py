@@ -18,7 +18,7 @@ sys.path.insert(0, current_dir)
 sys.path.insert(0, parent_dir)
 
 # Load environment variables from .env file
-env_path = os.path.join(parent_dir, '.env')
+env_path = '/etc/secrets/.env'
 if not os.path.exists(env_path):
     logger.error(f".env file not found at {env_path}")
     raise FileNotFoundError(f".env file not found at {env_path}")
@@ -251,7 +251,7 @@ from dotenv import load_dotenv
 # Load environment variables early
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
-env_path = os.path.join(parent_dir, '.env')
+env_path = '/etc/secrets/.env'
 
 if not os.path.exists(env_path):
     logger.error(f".env file not found at {env_path}")
@@ -314,7 +314,7 @@ from dotenv import load_dotenv
 # Load environment variables early
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
-env_path = os.path.join(parent_dir, '.env')
+env_path = '/etc/secrets/.env'
 
 if not os.path.exists(env_path):
     logger.error(f".env file not found at {env_path}")
