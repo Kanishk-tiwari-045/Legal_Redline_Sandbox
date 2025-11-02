@@ -303,6 +303,20 @@ async def get_historical_context(context_data: dict):
 async def root():
     return {"message": "Legal Redline Sandbox API", "docs": "/docs"}
 
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    if isinstance(exc, HTTPException):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail}
+        )
+    
+    logger.error(f"Unexpected error: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"}
+    )
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -3,3 +3,9 @@ __pycache__
 utils/__pycache__
 node_modules/
 .DS_Store
+venv
+frontend/node_modules/
+backend/__pycache__
+auth/node_modules
+auth/.env
+frontend/.env
