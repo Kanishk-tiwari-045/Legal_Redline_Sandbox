@@ -3,7 +3,6 @@ import os
 from typing import Dict, Any
 from google import genai
 from google.genai import types
-from .guardrails import InputValidator, APIGuardrails, rate_limit
 
 class ClauseRewriter:
     """Generates AI-powered clause rewrites using Gemini"""
@@ -16,39 +15,8 @@ class ClauseRewriter:
         self.client = genai.Client(api_key=api_key)
         self.model_name = "gemini-2.5-pro"
     
-    @rate_limit(max_requests=30, time_window=60)
     def suggest_rewrite(self, clause: Dict[str, Any], controls: Dict[str, Any]) -> Dict[str, Any]:
         """Generate a rewritten version of the clause with AI"""
-        
-        # Validate clause text
-        clause_text = clause.get('text', '')
-        is_valid, error = InputValidator.validate_text_input(clause_text, max_length=50000)
-        if not is_valid:
-            return {
-                'error': f'Invalid clause text: {error}',
-                'rewrite': None
-            }
-        
-        # Validate numeric controls
-        if 'notice_days' in controls:
-            is_valid, error = InputValidator.validate_numeric_parameter(
-                controls['notice_days'], min_val=1, max_val=365
-            )
-            if not is_valid:
-                return {
-                    'error': f'Invalid notice_days: {error}',
-                    'rewrite': None
-                }
-        
-        if 'late_fee_percent' in controls:
-            is_valid, error = InputValidator.validate_numeric_parameter(
-                controls['late_fee_percent'], min_val=0, max_val=100
-            )
-            if not is_valid:
-                return {
-                    'error': f'Invalid late_fee_percent: {error}',
-                    'rewrite': None
-                }
         
         try:
             # Build the prompt with context and constraints

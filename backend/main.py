@@ -1,8 +1,7 @@
 import os
 import sys
 import logging
-from typing import Optional, List
-from datetime import datetime, timedelta
+from typing import Optional
 from dotenv import load_dotenv
 
 logging.basicConfig(
@@ -49,7 +48,6 @@ from jose import JWTError, jwt
 
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
 
 from . import models, database, schemas, security
 
@@ -63,10 +61,6 @@ from services import (
 
 app = FastAPI(title="Legal Redline Sandbox - API")
 
-# Create database tables
-# This line tells SQLAlchemy to create the tables if they don't exist
-models.Base.metadata.create_all(bind=database.engine)
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:5173"],
@@ -75,42 +69,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# This tells FastAPI where the login endpoint is
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
+# Health endpoint
+@app.get("/health")
+@app.get("/api/health")
+async def health_check():
+    """Health check endpoint"""
+    return {"status": "healthy", "message": "Legal Redline API is running"}
 
-#--------------------------------------------
-# 1. NEW: AUTHENTICATION ENDPOINTS
-#--------------------------------------------
-
-@app.post("/api/users/register", response_model=schemas.User)
-def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
-    """
-    Register a new user.
-    """
-    # Check if user already exists
-    db_user = db.query(models.User).filter(models.User.email == user.email).first()
-    if db_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
+# Job management endpoints
+@app.get("/api/jobs/{job_id}")
+async def get_job_status(job_id: str):
+    """Get job status and result"""
+    job = job_queue.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
     
-    # Hash the password
-    hashed_password = security.get_password_hash(user.password)
-    
-    # Create new user object
-    new_user = models.User(
-        username=user.username,
-        email=user.email,
-        password_hash=hashed_password,
-        last_active=datetime.utcnow()
-    )
-    
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    
-    return new_user
+    return job.to_dict()
 
 @app.post("/api/auth/token", response_model=schemas.Token)
 async def login_for_access_token(
@@ -461,48 +435,69 @@ def get_saved_rewrites(
 
 # MODIFIED: All other job-creating endpoints
 
+# Document processing endpoints
 @app.post("/api/upload")
 async def upload_document(
     file: UploadFile = File(...), 
-    force_ocr: bool = False,
-    current_user: models.User = Depends(get_current_user)
+    force_ocr: bool = False
 ):
+    """Upload a PDF/image file and start background processing"""
     file_path = await save_upload_file(file)
     
     job_id = job_queue.create_job(
         job_type="document_processing",
-        user_id=current_user.id, 
+        user_id="session_user",  # Use session-based identifier
         data={"file_path": file_path, "force_ocr": force_ocr, "filename": file.filename}
     )
     
+    # Start background processing
     await job_queue.start_job(job_id, document_service.process_document_async)
     
     return {"job_id": job_id, "status": "processing"}
 
 @app.post("/api/rewrite")
-async def rewrite_clause(
-    clause_data: dict,
-    current_user: models.User = Depends(get_current_user)
-):
+async def rewrite_clause(clause_data: dict):
+    """Start background clause rewriting"""
+    logger.info(f"Rewrite request received: {clause_data.keys()}")
+    
+    # Debug: Check clause service status
+    logger.info(f"ClauseService initialization status: {clause_service.clause_rewriter is not None}")
+    
     job_id = job_queue.create_job(
         job_type="clause_rewriting",
-        user_id=current_user.id,
+        user_id="session_user",
         data=clause_data
     )
     
+    logger.info(f"Created rewrite job: {job_id}")
+    
+    # Start background processing
     await job_queue.start_job(job_id, clause_service.rewrite_clause_async)
+    
+    logger.info(f"Started rewrite job: {job_id}")
+    
+    return {"job_id": job_id, "status": "processing"}
+
+@app.post("/api/chat")
+async def chat(chat_data: dict):
+    """Start background chat processing"""
+    job_id = job_queue.create_job(
+        job_type="chat",
+        user_id="session_user",
+        data=chat_data
+    )
+    
+    # Start background processing
+    await job_queue.start_job(job_id, chat_service.chat_async)
     
     return {"job_id": job_id, "status": "processing"}
 
 @app.post("/api/explain")
-async def explain_term(
-    term_data: dict,
-    current_user: models.User = Depends(get_current_user)
-):
+async def explain_term(term_data: dict):
     """Start background term explanation"""
     job_id = job_queue.create_job(
         job_type="explanation",
-        user_id=current_user.id,
+        user_id="session_user",
         data=term_data
     )
     
@@ -512,14 +507,11 @@ async def explain_term(
     return {"job_id": job_id, "status": "processing"}
 
 @app.post("/api/export")
-async def export_report(
-    export_data: dict,
-    current_user: models.User = Depends(get_current_user)
-):
+async def export_report(export_data: dict):
     """Start background export processing"""
     job_id = job_queue.create_job(
         job_type="export",
-        user_id=current_user.id,
+        user_id="session_user",
         data=export_data
     )
     
@@ -529,14 +521,11 @@ async def export_report(
     return {"job_id": job_id, "status": "processing"}
 
 @app.post("/api/diff")
-async def generate_diff(
-    diff_data: dict,
-    current_user: models.User = Depends(get_current_user)
-):
+async def generate_diff(diff_data: dict):
     """Generate HTML diff between original and rewritten text"""
     job_id = job_queue.create_job(
         job_type="diff_generation",
-        user_id=current_user.id,
+        user_id="session_user",
         data=diff_data
     )
     
@@ -546,14 +535,11 @@ async def generate_diff(
     return {"job_id": job_id, "status": "processing"}
 
 @app.post("/api/privacy/redact")
-async def redact_document(
-    redaction_data: dict,
-    current_user: models.User = Depends(get_current_user)
-):
+async def redact_document(redaction_data: dict):
     """Start background privacy redaction processing"""
     job_id = job_queue.create_job(
         job_type="privacy_redaction",
-        user_id=current_user.id,
+        user_id="session_user",
         data=redaction_data
     )
     
@@ -563,14 +549,11 @@ async def redact_document(
     return {"job_id": job_id, "status": "processing"}
 
 @app.post("/api/analyze/clause")
-async def analyze_clause_impact(
-    clause_data: dict,
-    current_user: models.User = Depends(get_current_user)
-):
+async def analyze_clause_impact(clause_data: dict):
     """Analyze clause impact using contextual explainer"""
     job_id = job_queue.create_job(
         job_type="clause_analysis",
-        user_id=current_user.id,
+        user_id="session_user",
         data=clause_data
     )
     
@@ -580,14 +563,11 @@ async def analyze_clause_impact(
     return {"job_id": job_id, "status": "processing"}
 
 @app.post("/api/translate/plain")
-async def translate_to_plain_english(
-    translation_data: dict,
-    current_user: models.User = Depends(get_current_user)
-):
+async def translate_to_plain_english(translation_data: dict):
     """Translate complex legal language to plain English"""
     job_id = job_queue.create_job(
         job_type="plain_translation",
-        user_id=current_user.id,
+        user_id="session_user",
         data=translation_data
     )
     
@@ -597,14 +577,11 @@ async def translate_to_plain_english(
     return {"job_id": job_id, "status": "processing"}
 
 @app.post("/api/historical/context")
-async def get_historical_context(
-    context_data: dict,
-    current_user: models.User = Depends(get_current_user)
-):
+async def get_historical_context(context_data: dict):
     """Get historical context and precedents for clauses"""
     job_id = job_queue.create_job(
         job_type="historical_context",
-        user_id=current_user.id,
+        user_id="session_user",
         data=context_data
     )
     
@@ -612,34 +589,6 @@ async def get_historical_context(
     await job_queue.start_job(job_id, explainer_service.historical_context_async)
     
     return {"job_id": job_id, "status": "processing"}
-
-# Unchanged Endpoints (mostly)
-
-@app.get("/health")
-@app.get("/api/health")
-async def health_check():
-    return {"status": "healthy", "message": "Legal Redline API is running"}
-
-@app.get("/api/jobs/{job_id}")
-async def get_job_status(job_id: str):
-    # Note: This is not user-protected. Anyone with a job ID can see the status.
-    # This is usually fine, but you could add protection if you want.
-    job = job_queue.get_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    
-    return job.to_dict()
-
-@app.get("/api/jobs")
-async def get_all_jobs(current_user: models.User = Depends(get_current_user)):
-    """Get all jobs (now filtered by user)"""
-    # Get all jobs from the queue
-    all_jobs = job_queue.get_all_jobs()
-    
-    # Filter them in Python to only show jobs belonging to the current user
-    user_jobs = [j for j in all_jobs if j.user_id == current_user.id]
-    
-    return [job.to_dict() for job in user_jobs]
 
 @app.get("/")
 async def root():
@@ -661,4 +610,4 @@ async def global_exception_handler(request, exc):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
