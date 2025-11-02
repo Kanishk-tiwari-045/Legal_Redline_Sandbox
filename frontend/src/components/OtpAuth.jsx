@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 
-const AUTH_API_BASE = import.meta.env.VITE_AUTH_API_BASE || 'http://localhost:5000';
+const AUTH_API_BASE = import.meta.env.VITE_AUTH_API_BASE || 'https://legal-redline-sandbox.onrender.com';
 
 export default function OtpAuth({ isOpen, onClose, onVerified }) {
   const [step, setStep] = useState('email'); // 'email' or 'otp'
@@ -43,7 +43,7 @@ export default function OtpAuth({ isOpen, onClose, onVerified }) {
 
     setLoading(true);
     try {
-      const response = await fetch(`${AUTH_API_BASE}/auth/send-otp`, {
+      const response = await fetch(`${AUTH_API_BASE}/api/otp/send-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
@@ -77,7 +77,7 @@ export default function OtpAuth({ isOpen, onClose, onVerified }) {
 
     setLoading(true);
     try {
-      const response = await fetch(`${AUTH_API_BASE}/auth/verify-otp`, {
+      const response = await fetch(`${AUTH_API_BASE}/api/otp/verify-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, otp }),

@@ -1,5 +1,5 @@
-const API_BASE = import.meta.env.VITE_API_BASE || 'https://legal-redline-sandbox.onrender.com/api'
-const AUTH_API_BASE = import.meta.env.VITE_AUTH_API_BASE || 'https://legal-redline-sandbox-1.onrender.com/:5000'
+const API_BASE = import.meta.env.VITE_API_BASE || 'https://legal-redline-sandbox.onrender.com'
+const AUTH_API_BASE = import.meta.env.VITE_AUTH_API_BASE || 'https://legal-redline-sandbox-1.onrender.com'
 
 // Helper to get auth token
 function getAuthToken() {
@@ -113,7 +113,7 @@ export async function loginUser(email, password) {
 }
 
 export async function createChatSession() {
-  const res = await apiCall('/chat/sessions', {
+  const res = await apiCall('/api/chat/sessions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({}),
