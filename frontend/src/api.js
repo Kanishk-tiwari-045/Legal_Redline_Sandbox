@@ -1,5 +1,5 @@
 const API_BASE = import.meta.env.VITE_API_BASE || 'https://legal-redline-sandbox.onrender.com'
-const AUTH_API_BASE = import.meta.env.VITE_AUTH_API_BASE || 'https://legal-redline-sandbox-1.onrender.com'
+const AUTH_API_BASE = import.meta.env.VITE_AUTH_API_BASE || 'https://legal-redline-sandbox-qwep.onrender.com'
 
 // Helper to get auth token
 function getAuthToken() {

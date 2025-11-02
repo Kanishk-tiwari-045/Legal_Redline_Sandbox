@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 
-const AUTH_API_BASE = import.meta.env.VITE_AUTH_API_BASE || 'https://legal-redline-sandbox.onrender.com';
+const AUTH_API_BASE = import.meta.env.VITE_AUTH_API_BASE || 'https://legal-redline-sandbox-qwep.onrender.com';
 
 export default function OtpAuth({ isOpen, onClose, onVerified }) {
   const [step, setStep] = useState('email'); // 'email' or 'otp'
