@@ -22,8 +22,23 @@ export default function UploadPage() {
     setUploadJob(null)
 
     // TRIGGER 3: "New session" toast
-    toast.info("New session started");
+    // toast.info("New session started");
   }, [state.resetFlag])
+
+  // This runs ONCE when the page first loads
+  useEffect(() => {
+    // Check if the flag we set in App.jsx exists
+    const flag = sessionStorage.getItem('showNewSessionToast');
+
+    if (flag) {
+      // The flag exists, so show the toast
+      toast.info("New session started");
+      
+      // IMPORTANT: Immediately remove the flag so it doesn't
+      // show again if you navigate away and come back.
+      sessionStorage.removeItem('showNewSessionToast');
+    }
+  }, []); // <-- The empty array [] means this runs only on mount
 
   // Check for existing completed jobs on component mount
   useEffect(() => {
