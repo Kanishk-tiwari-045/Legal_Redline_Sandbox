@@ -1,7 +1,8 @@
 import os
 import sys
 import logging
-from typing import Optional
+from typing import Optional, List
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
 logging.basicConfig(
@@ -49,9 +50,13 @@ from jose import JWTError, jwt
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import models, database, schemas, security
+from sqlalchemy.orm import Session
 
-from .database import get_db
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+import models, database, schemas, security
+
+from database import get_db
 
 from job_queue import job_queue, JobStatus
 from services import (
