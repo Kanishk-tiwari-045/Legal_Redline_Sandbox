@@ -164,13 +164,13 @@ async def get_current_user(
 
 @app.post("/api/chat/sessions", response_model=schemas.ChatSession)
 def create_chat_session(
-    db: Session = Depends(get_db), 
-    current_user: models.User = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
     """
-    Creates a new, empty chat session for the logged-in user.
+    Creates a new, empty chat session. For now, allows anonymous sessions.
     """
-    new_session = models.ChatSession(user_id=current_user.id)
+    # Create session without user association for anonymous access
+    new_session = models.ChatSession(user_id=None)
     db.add(new_session)
     db.commit()
     db.refresh(new_session)

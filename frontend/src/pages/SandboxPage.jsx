@@ -52,6 +52,11 @@ export default function SandboxPage() {
             } else {
               const rewriteText = job.result.rewritten_clause || job.result.rewrite || JSON.stringify(job.result, null, 2)
               setRewrite(rewriteText)
+              console.log('Adding rewrite to state:', {
+                clauseId: clause.clause_id || `clause_${selectedIdx}`,
+                payload: job.result,
+                clauseTitle: clause.title
+              })
               dispatch({ 
                 type: 'ADD_REWRITE', 
                 clauseId: clause.clause_id || `clause_${selectedIdx}`, 
@@ -68,6 +73,11 @@ export default function SandboxPage() {
         })
       } else {
         setRewrite(res.rewrite || JSON.stringify(res))
+        console.log('Adding rewrite to state (non-job):', {
+          clauseId: clause.clause_id || `clause_${selectedIdx}`,
+          payload: res,
+          clauseTitle: clause.title
+        })
         dispatch({ 
           type: 'ADD_REWRITE', 
           clauseId: clause.clause_id || `clause_${selectedIdx}`, 

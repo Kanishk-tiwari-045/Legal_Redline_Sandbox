@@ -37,6 +37,11 @@ const Footer = () => {
             <ul className="space-y-2">
               <li>
                 <Link to="/" className="text-gray-400 hover:text-blue-400 transition-colors flex items-center gap-2">
+                  <span>🏠</span> Home
+                </Link>
+              </li>
+              <li>
+                <Link to="/upload" className="text-gray-400 hover:text-blue-400 transition-colors flex items-center gap-2">
                   <span>📄</span> Upload Document
                 </Link>
               </li>

@@ -72,6 +72,49 @@ const generateToken = (email, sessionId) => {
   );
 };
 
+// Route: Register User (for anonymous/guest users)
+app.post("/auth/register", async (req, res) => {
+  const { email, username, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ error: "Email and password are required" });
+  }
+
+  // For anonymous users, just return success
+  res.json({ 
+    success: true, 
+    message: "Anonymous user registered successfully",
+    userId: crypto.randomUUID()
+  });
+});
+
+// Route: Login User
+app.post("/auth/login", async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ error: "Email and password are required" });
+  }
+
+  // For anonymous users, create a session and return token
+  const sessionId = crypto.randomUUID();
+  const token = generateToken(email, sessionId);
+  
+  // Store session
+  sessionStore[sessionId] = {
+    email,
+    createdAt: Date.now(),
+    lastActive: Date.now()
+  };
+
+  res.json({
+    access_token: token,
+    token_type: "bearer",
+    expires_in: 86400,
+    user: { email, id: sessionId }
+  });
+});
+
 // Route: Send OTP
 app.post("/auth/send-otp", async (req, res) => {
   const { email } = req.body;

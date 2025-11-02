@@ -13,6 +13,7 @@ const getInitialState = () => {
         sessionId: parsedState.sessionId || Math.random().toString(36).substr(2, 9),
         sessionStartTime: parsedState.sessionStartTime || new Date().toISOString(),
         resetFlag: 0, // Always reset this on page load
+        chatSessionId: parsedState.chatSessionId || null,
         document: parsedState.document || null,
         riskyClauses: parsedState.riskyClauses || [],
         rewriteHistory: parsedState.rewriteHistory || {},
@@ -31,6 +32,7 @@ const getInitialState = () => {
     sessionId: Math.random().toString(36).substr(2, 9),
     sessionStartTime: new Date().toISOString(),
     resetFlag: 0,
+    chatSessionId: null,
     document: null,
     riskyClauses: [],
     rewriteHistory: {},
@@ -84,9 +86,19 @@ function reducer(state, action) {
       }
     
     case 'ADD_REWRITE':
+      // Ensure consistent data structure for rewrites
+      const rewriteData = {
+        timestamp: new Date().toISOString(),
+        clauseId: action.clauseId,
+        clauseTitle: action.clauseTitle,
+        ...action.payload,
+        // Normalize the rewrite content field
+        rewriteContent: action.payload?.rewritten_clause || action.payload?.rewrite || action.payload?.result?.rewritten_clause || action.payload?.result?.rewrite || action.payload
+      }
+      
       return { 
         ...state, 
-        rewriteHistory: { ...state.rewriteHistory, [action.clauseId]: action.payload },
+        rewriteHistory: { ...state.rewriteHistory, [action.clauseId]: rewriteData },
         activities: [...state.activities, {
           id: Date.now(),
           timestamp: new Date().toISOString(),
@@ -132,6 +144,19 @@ function reducer(state, action) {
         ...state,
         activeJobs: updatedJobs,
         jobResults: updatedResults
+      }
+    
+    case 'SET_CHAT_SESSION':
+      return {
+        ...state,
+        chatSessionId: action.payload,
+        activities: [...state.activities, {
+          id: Date.now(),
+          timestamp: new Date().toISOString(),
+          type: 'chat_session_created',
+          description: `Chat session created: ${action.payload}`,
+          data: { sessionId: action.payload }
+        }]
       }
     
     case 'RESET_SESSION':

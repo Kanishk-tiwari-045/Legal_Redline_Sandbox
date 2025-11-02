@@ -21,6 +21,12 @@ export default function DiffPage() {
 
   const hasRewriteHistory = Object.keys(state.rewriteHistory).length > 0
   const availableClauses = hasRewriteHistory ? Object.keys(state.rewriteHistory) : []
+  
+  // Debug logging
+  useEffect(() => {
+    console.log('DiffPage - Rewrite History:', state.rewriteHistory)
+    console.log('DiffPage - Available Clauses:', availableClauses)
+  }, [state.rewriteHistory, availableClauses])
 
   const getClauseVersions = (clauseId) => {
     const rewrites = state.rewriteHistory[clauseId]
@@ -31,14 +37,14 @@ export default function DiffPage() {
         id: `version_${index}`,
         label: `Version ${index + 1}`,
         timestamp: rewrite.timestamp || new Date().toISOString(),
-        content: rewrite.result?.rewrite || ''
+        content: rewrite.rewriteContent || rewrite.rewritten_clause || rewrite.rewrite || 'No content available'
       }))
     } else {
       return [{
         id: 'version_0',
         label: 'Rewritten Version',
         timestamp: rewrites.timestamp || new Date().toISOString(),
-        content: rewrites.result?.rewrite || ''
+        content: rewrites.rewriteContent || rewrites.rewritten_clause || rewrites.rewrite || 'No content available'
       }]
     }
   }
