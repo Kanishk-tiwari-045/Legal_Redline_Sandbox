@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 
-const AUTH_API_BASE = import.meta.env.VITE_AUTH_API_BASE || 'https://legal-redline-sandbox-qwep.onrender.com';
+const AUTH_API_BASE = import.meta.env.VITE_AUTH_API_BASE || 'https://legal-redline-sandbox-1.onrender.com';
 
 export default function OtpAuth({ isOpen, onClose, onVerified }) {
   const [step, setStep] = useState('email'); // 'email' or 'otp'
@@ -42,12 +42,16 @@ export default function OtpAuth({ isOpen, onClose, onVerified }) {
     }
 
     setLoading(true);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
     try {
-      const response = await fetch(`${AUTH_API_BASE}/api/otp/send-otp`, {
+      const response = await fetch(`${AUTH_API_BASE}/auth/send-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
 
       const data = await response.json();
 
@@ -59,7 +63,12 @@ export default function OtpAuth({ isOpen, onClose, onVerified }) {
       setStep('otp');
       setCountdown(300); // 5 minutes
     } catch (err) {
-      setError(err.message);
+      clearTimeout(timeoutId);
+      if (err.name === 'AbortError') {
+        setError('Request timed out. Please try again.');
+      } else {
+        setError(err.message);
+      }
       toast.error(err.message);
     } finally {
       setLoading(false);
@@ -76,12 +85,16 @@ export default function OtpAuth({ isOpen, onClose, onVerified }) {
     }
 
     setLoading(true);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
     try {
-      const response = await fetch(`${AUTH_API_BASE}/api/otp/verify-otp`, {
+      const response = await fetch(`${AUTH_API_BASE}/auth/verify-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, otp }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
 
       const data = await response.json();
 
@@ -98,7 +111,12 @@ export default function OtpAuth({ isOpen, onClose, onVerified }) {
       onVerified(data.token, data.user);
       onClose();
     } catch (err) {
-      setError(err.message);
+      clearTimeout(timeoutId);
+      if (err.name === 'AbortError') {
+        setError('Request timed out. Please try again.');
+      } else {
+        setError(err.message);
+      }
       toast.error(err.message);
     } finally {
       setLoading(false);
