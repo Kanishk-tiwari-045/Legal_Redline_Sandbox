@@ -17,13 +17,22 @@ parent_dir = os.path.dirname(current_dir)
 sys.path.insert(0, current_dir)
 sys.path.insert(0, parent_dir)
 
-# Load environment variables from .env file
-env_path = '/etc/secrets/.env'
-if not os.path.exists(env_path):
-    logger.error(f".env file not found at {env_path}")
-    raise FileNotFoundError(f".env file not found at {env_path}")
+# Load environment variables from .env file if it exists
+env_paths = ['/etc/secrets/.env', os.path.join(parent_dir, '.env')]
+env_loaded = False
+for env_path in env_paths:
+    if os.path.exists(env_path):
+        load_dotenv(env_path)
+        logger.info(f"Loaded environment from {env_path}")
+        env_loaded = True
+        break
 
-load_dotenv(env_path)
+if not env_loaded:
+    logger.warning("No .env file found, using system environment variables")
+
+# Single email credential check
+email_user = os.getenv('EMAIL_USER')
+email_password = os.getenv('EMAIL_PASSWORD')
 
 # Single email credential check
 email_user = os.getenv('EMAIL_USER')
@@ -68,7 +77,7 @@ app = FastAPI(title="Legal Redline Sandbox - API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:5173", "https://legal-redline-sandbox-nine.vercel.app"],
+    allow_origins=os.getenv('CORS_ORIGINS', "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,https://legal-redline-sandbox-nine.vercel.app").split(','),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
