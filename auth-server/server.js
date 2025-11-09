@@ -26,10 +26,8 @@ import jwt from "jsonwebtoken";
 })();
 
 const app = express();
-const corsOrigins = process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : ['http://localhost:5173', 'http://localhost:3000', 'https://legal-redline-sandbox-nine.vercel.app'];
-
 app.use(cors({
-  origin: corsOrigins, // Allow Vite dev server
+  origin: ['https://legal-redline-sandbox-nine.vercel.app', 'http://localhost:5173', 'http://localhost:3000'], // Allow Vite dev server
   credentials: true
 }));
 app.use(express.json());
