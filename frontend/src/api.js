@@ -13,29 +13,43 @@ function getAuthHeaders() {
 }
 
 async function apiCall(url, options = {}) {
-  const response = await fetch(`${API_BASE}${url}`, {
-    ...options,
-    headers: {
-      ...options.headers,
-      ...getAuthHeaders(),
-    }
-  })
-  
-  if (!response.ok) {
-    // If it fails, create an error object that our app can understand
-    const errorData = await response.json().catch(() => ({}));
-    const error = new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+  try {
+    const response = await fetch(`${API_BASE}${url}`, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        ...options.headers,
+        ...getAuthHeaders(),
+      }
+    });
     
-    // This part makes it behave like axios, so err.response.status works
-    error.response = { 
-      status: response.status,
-      data: errorData,
-    };
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      // If it fails, create an error object that our app can understand
+      const errorData = await response.json().catch(() => ({}));
+      const error = new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+      
+      // This part makes it behave like axios, so err.response.status works
+      error.response = { 
+        status: response.status,
+        data: errorData,
+      };
+      throw error;
+    }
+
+    // If we are here, the request was successful
+    return response
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error('Request timed out');
+    }
     throw error;
   }
-
-  // If we are here, the request was successful
-  return response
 }
 
 // Auth API functions
