@@ -30,24 +30,9 @@ for env_path in env_paths:
 if not env_loaded:
     logger.warning("No .env file found, using system environment variables")
 
-# Single email credential check
-email_user = os.getenv('EMAIL_USER')
-email_password = os.getenv('EMAIL_PASSWORD')
+# Email credentials removed - handled in auth-server
 
-# Single email credential check
-email_user = os.getenv('EMAIL_USER')
-email_password = os.getenv('EMAIL_PASSWORD')
-
-if not email_user or not email_password:
-    logger.error("Email credentials missing in .env file!")
-    raise ValueError("Email credentials not configured")
-
-logger.info(f"Email configuration loaded for: {email_user}")
-
-load_dotenv(os.path.join(parent_dir, '.env'))
-
-
-from otp_routes import router as otp_router
+# OTP routes removed - handled in auth-server
 
 from fastapi import (
     FastAPI, UploadFile, File, HTTPException, 
@@ -104,41 +89,7 @@ async def get_job_status(job_id: str):
     
     return job.to_dict()
 
-@app.post("/api/auth/token", response_model=schemas.Token)
-async def login_for_access_token(
-    form_data: OAuth2PasswordRequestForm = Depends(), 
-    db: Session = Depends(get_db)
-):
-    """
-    Log in a user (using email as the 'username') and return a JWT token.
-    """
-    # Find user by email (which is what form_data.username will contain)
-    user = db.query(models.User).filter(models.User.email == form_data.username).first()
 
-    # Check if user exists and password is correct
-    if not user or not security.verify_password(form_data.password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    # Create the access token
-    access_token_expires = timedelta(minutes=security.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = security.create_access_token(
-        data={"sub": user.email}, expires_delta=access_token_expires
-    )
-    
-    # Update last_active time
-    user.last_active = datetime.utcnow()
-    db.commit()
-    
-    return {"access_token": access_token, "token_type": "bearer"}
-
-
-#--------------------------------------------
-# 2. NEW: "GET CURRENT USER" DEPENDENCY
-#--------------------------------------------
 
 async def get_current_user(
     token: str = Depends(oauth2_scheme), 
@@ -228,13 +179,6 @@ def get_chat_history(
     return messages
 
 
-
-
-# otp verification routes 
-app.include_router(otp_router, prefix="/api/otp", tags=["OTP"])
-
-
-
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
@@ -267,8 +211,8 @@ parent_dir = os.path.dirname(current_dir)
 env_path = '/etc/secrets/.env'
 
 if not os.path.exists(env_path):
-    logger.error(f".env file not found at {env_path}")
-    raise FileNotFoundError(f".env file not found at {env_path}")
+    logger.warning(f".env file not found at {env_path}, proceeding")
+    # raise FileNotFoundError(f".env file not found at {env_path}")
 
 load_dotenv(env_path)
 
@@ -279,7 +223,7 @@ email_password = os.getenv('EMAIL_PASSWORD')
 if not email_user or not email_password:
     logger.error("Email credentials missing in .env file!")
     logger.error("Please set EMAIL_USER and EMAIL_PASSWORD in your .env file")
-    raise ValueError("Email credentials not configured")
+    # raise ValueError("Email credentials not configured")
 
 logger.info(f"Email configuration loaded for: {email_user}")
 
@@ -294,46 +238,34 @@ logger.info(f"Email configuration loaded for: {email_user}")
 
 
 # otp verification routes 
-app.include_router(otp_router, prefix="/api/otp", tags=["OTP"])
-
-
-
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
-
-# After loading .env
-if not os.getenv('EMAIL_USER') or not os.getenv('EMAIL_PASSWORD'):
-    logger.error("Email credentials missing in .env file!")
-    logger.info("Please set EMAIL_USER and EMAIL_PASSWORD in your .env file")
-else:
-    logger.info("Email credentials loaded successfully")
+# app.include_router(otp_router, prefix="/api/otp", tags=["OTP"])
 
 
 
 
 
-# Near the top after imports
-import os
-import logging
-from dotenv import load_dotenv
+# REMOVED DUPLICATE CODE SECTION (was causing startup errors)
+# import os
+# import logging  
+# from dotenv import load_dotenv
 
-# Set up logging first
+# Set up logging first - COMMENTED OUT (already done at top)
 # logging.basicConfig(
 #     level=logging.INFO,
 #     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 # )
 # logger = logging.getLogger(__name__)
 
-# Load environment variables early
-current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-env_path = '/etc/secrets/.env'
+# Load environment variables early - COMMENTED OUT (already done at top)  
+# current_dir = os.path.dirname(os.path.abspath(__file__))
+# parent_dir = os.path.dirname(current_dir)
+# env_path = '/etc/secrets/.env'
 
-if not os.path.exists(env_path):
-    logger.error(f".env file not found at {env_path}")
-    raise FileNotFoundError(f".env file not found at {env_path}")
+# if not os.path.exists(env_path):
+#     logger.error(f".env file not found at {env_path}")
+#     raise FileNotFoundError(f".env file not found at {env_path}")
 
-load_dotenv(env_path)
+# load_dotenv(env_path)
 
 # Validate email credentials
 email_user = os.getenv('EMAIL_USER')
@@ -342,7 +274,7 @@ email_password = os.getenv('EMAIL_PASSWORD')
 if not email_user or not email_password:
     logger.error("Email credentials missing in .env file!")
     logger.error("Please set EMAIL_USER and EMAIL_PASSWORD in your .env file")
-    raise ValueError("Email credentials not configured")
+    # raise ValueError("Email credentials not configured")
 
 logger.info(f"Email configuration loaded for: {email_user}")
 
