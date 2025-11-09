@@ -73,6 +73,10 @@ from services import (
     privacy_service, diff_service, save_upload_file
 )
 
+# Create database tables
+from database import engine, Base
+Base.metadata.create_all(bind=engine)
+
 app = FastAPI(title="Legal Redline Sandbox - API")
 
 app.add_middleware(
