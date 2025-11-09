@@ -21,56 +21,22 @@ export default function App() {
   const { state, dispatch } = useAppState()
   const navigate = useNavigate()
 
-  // Add a loading state
-  // We can't show the app until we know we have a user token.
-  const [isLoading, setIsLoading] = useState(true);
-
-  // This effect runs once when the app loads
-  useEffect(() => {
-    // Initialize app without requiring authentication
-    const initializeSession = async () => {
-      try {
-        // Create an anonymous chat session for the user
-        const sessionResponse = await api.createChatSession();
-        
-        // Save this new session ID to our global state
-        dispatch({ 
-          type: 'SET_CHAT_SESSION', 
-          payload: sessionResponse.id 
-        });
-
-      } catch (err) {
-        console.error("Failed to create chat session:", err);
-        // Don't block the app if chat session creation fails
-      }
-      
-      // Show the app regardless
-      setIsLoading(false);
-    };
-
-    initializeSession();
-  }, [dispatch]); // Run this only once
+  // No loading state needed - session created on file upload
   
   const handleLeaveSession = async () => {
     // Show confirmation dialog
     const confirmed = window.confirm(
-      '⚠️ Are you sure you want to leave the session?\n\nThis will:\n• Clear all uploaded documents\n• Reset analysis results\n• Clear chat history\n• Remove all rewrite history\n• Log you out of authentication\n• Permanently delete all saved data\n\nThis action cannot be undone.'
+      '⚠️ Are you sure you want to leave the session?\n\nThis will:\n• Clear all uploaded documents\n• Reset analysis results\n• Clear chat history\n• Remove all rewrite history\n• Permanently delete all saved data\n\nThis action cannot be undone.'
     )
 
     if (confirmed) {
-      // Logout from auth server
-      await api.logout()
-
       // Reset the session state (this will also clear localStorage via enhancedDispatch)
       dispatch({ type: 'RESET_SESSION' })
 
-      // Delete the token from storage
-      localStorage.removeItem('accessToken');
+      // Delete session data from storage
       localStorage.removeItem('sessionId');
 
       // Set a temporary flag in sessionStorage.
-      // sessionStorage is perfect because it survives a page reload,
-      // but is deleted when you close the browser tab.
       sessionStorage.setItem('showNewSessionToast', 'true');
 
       // Navigate to home page
@@ -81,15 +47,6 @@ export default function App() {
         window.location.reload()
       }, 100)
     }
-  }
-
-  // Show a loading screen while we set up the session
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <h1 className="text-2xl font-bold text-white">🚀 Initializing Secure Session...</h1>
-      </div>
-    );
   }
   
   return (

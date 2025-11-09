@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useAppState } from '../state/StateContext'
 import { toast } from 'react-toastify'
 import api from '../api';
-import OtpAuth from '../components/OtpAuth';
 
 export default function UploadPage() {
   const { state, dispatch } = useAppState()
@@ -10,34 +9,8 @@ export default function UploadPage() {
   const [forceOcr, setForceOcr] = useState(false)
   const [uploadJob, setUploadJob] = useState(null)
   const isInitialMount = useRef(true);
-  const [showOtpModal, setShowOtpModal] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [authUser, setAuthUser] = useState(null);
 
-  // Check authentication status on mount
-  useEffect(() => {
-    checkAuth();
-  }, []);
-
-  const checkAuth = async () => {
-    const token = localStorage.getItem('auth_token');
-    if (token) {
-      const verification = await api.verifyToken();
-      if (verification.valid) {
-        setIsAuthenticated(true);
-        setAuthUser(verification.user);
-      } else {
-        // Token invalid, clear it
-        handleLogout();
-      }
-    }
-  };
-
-  const handleLogout = () => {
-    api.logout();
-    setIsAuthenticated(false);
-    setAuthUser(null);
-  };
+  // Authentication removed - using anonymous sessions
 
   // Reset local state when session resets
   useEffect(() => {
@@ -69,12 +42,10 @@ export default function UploadPage() {
     }
   }, []); // <-- The empty array [] means this runs only on mount
 
-  // Check for existing completed jobs on component mount
+  // Check for existing completed jobs on component mount  
   useEffect(() => {
-    if (isAuthenticated) {
-      checkExistingJobs()
-    }
-  }, [isAuthenticated])
+    checkExistingJobs()
+  }, [])
 
   async function checkExistingJobs() {
     try {
@@ -112,6 +83,18 @@ export default function UploadPage() {
     if (!file) return
     
     try {
+      // Ensure we have a session (create one if needed)
+      let sessionId = localStorage.getItem('sessionId')
+      if (!sessionId) {
+        console.log('No session found, creating new session...')
+        const session = await api.createChatSession()
+        sessionId = session.id
+        console.log('Created new session:', sessionId)
+        
+        // Update global state to reflect the new session
+        dispatch({ type: 'SET_SESSION_ID', payload: sessionId })
+        toast.info('New session started')
+      }
       console.log('Starting upload for file:', file.name)
       const response = await api.uploadFile(file, forceOcr)
       console.log('Upload response:', response)
@@ -189,25 +172,11 @@ export default function UploadPage() {
     const selectedFile = e.target.files[0];
     if (selectedFile) {
       setFile(selectedFile);
-      // Show OTP modal if not authenticated
-      if (!isAuthenticated) {
-        setShowOtpModal(true);
-      }
     }
-  };
-
-  const handleVerificationSuccess = (token, user) => {
-    setIsAuthenticated(true);
-    setAuthUser(user);
-    toast.success(`Welcome, ${user.email}!`);
   };
 
   const handleAnalyzeClick = () => {
-    if (!isAuthenticated) {
-      setShowOtpModal(true);
-    } else {
-      onUpload();
-    }
+    onUpload();
   };
 
   return (
@@ -221,29 +190,7 @@ export default function UploadPage() {
           </h1>
           <p className="text-gray-300">AI-powered legal document risk analysis</p>
           
-          {/* Auth Status Badge */}
-          {/* {isAuthenticated && authUser && (
-            <div className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-green-900/30 border border-green-700 rounded-full">
-              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-              <span className="text-green-300 text-sm font-medium">
-                Authenticated: {authUser.email}
-              </span>
-              <button
-                onClick={handleLogout}
-                className="ml-2 text-green-400 hover:text-green-300 text-xs underline"
-              >
-                Logout
-              </button>
-            </div>
-          )} */}
-          {isAuthenticated && authUser && (
-            <div className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-green-900/30 border border-green-700 rounded-full">
-              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-              <span className="text-green-300 text-sm font-medium">
-                🔐 Secured: {authUser.email}
-              </span>
-            </div>
-          )}
+
         </div>
 
         {/* Upload Card */}
@@ -306,18 +253,11 @@ export default function UploadPage() {
                   </span>
                 ) : (
                   <span className="flex items-center justify-center gap-2">
-                    {!isAuthenticated && <span>🔐</span>}
                     <span>🚀</span>
-                    {isAuthenticated ? 'Analyze Document' : 'Authenticate & Analyze'}
+                    Analyze Document
                   </span>
                 )}
               </button>
-              
-              <OtpAuth
-                isOpen={showOtpModal}
-                onClose={() => setShowOtpModal(false)}
-                onVerified={handleVerificationSuccess}
-              />
 
               <button 
                 onClick={checkExistingJobs}
@@ -329,13 +269,6 @@ export default function UploadPage() {
             </div>
           </div>
         </div>
-
-        {/* OTP Modal */}
-        <OtpAuth
-          isOpen={showOtpModal}
-          onClose={() => setShowOtpModal(false)}
-          onVerified={handleVerificationSuccess}
-        />
 
         {/* Processing Status */}
         {uploadJob && (

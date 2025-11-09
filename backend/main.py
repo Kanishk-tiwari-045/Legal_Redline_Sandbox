@@ -35,18 +35,13 @@ if not env_loaded:
 # OTP routes removed - handled in auth-server
 
 from fastapi import (
-    FastAPI, UploadFile, File, HTTPException, 
+    FastAPI, UploadFile, File, Form, HTTPException, 
     status, Depends
 )
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from jose import JWTError, jwt
-
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from sqlalchemy.orm import Session
-
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 import models, database, schemas, security
 
@@ -91,37 +86,8 @@ async def get_job_status(job_id: str):
 
 
 
-async def get_current_user(
-    token: str = Depends(oauth2_scheme), 
-    db: Session = Depends(get_db)
-) -> models.User:
-    """
-    Dependency to get the current logged-in user from a token.
-    This will be used to protect all other endpoints.
-    """
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    try:
-        payload = jwt.decode(token, security.SECRET_KEY, algorithms=[security.ALGORITHM])
-        email: str = payload.get("sub")
-        if email is None:
-            raise credentials_exception
-        token_data = schemas.TokenData(email=email)
-    except JWTError:
-        raise credentials_exception
-    
-    user = db.query(models.User).filter(models.User.email == token_data.email).first()
-    if user is None:
-        raise credentials_exception
-    
-    return user
-
-
 #--------------------------------------------
-# 3. NEW & MODIFIED: PROTECTED ENDPOINTS
+# CHAT SESSION ENDPOINTS (NO AUTH REQUIRED)
 #--------------------------------------------
 
 # NEW: Chat Session Management
@@ -142,38 +108,34 @@ def create_chat_session(
 
 @app.get("/api/chat/sessions", response_model=List[schemas.ChatSession])
 def get_chat_sessions(
-    db: Session = Depends(get_db), 
-    current_user: models.User = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
     """
-    Gets all chat sessions for the logged-in user.
+    Gets all anonymous chat sessions.
     """
-    return db.query(models.ChatSession).filter(models.ChatSession.user_id == current_user.id).all()
+    return db.query(models.ChatSession).filter(models.ChatSession.user_id == None).all()
 
 # MODIFIED: Original Chat Endpoints
 
 @app.get("/api/chat/history/{session_id}", response_model=List[schemas.ChatMessage])
 def get_chat_history(
     session_id: int, 
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
     """
-    Gets all messages for a specific chat session.
-    Ensures the user owns this session.
+    Gets all messages for a specific anonymous chat session.
     """
-    # NEW Security Check
+    # Check if session exists (anonymous sessions only)
     session = db.query(models.ChatSession).filter(
         models.ChatSession.id == session_id,
-        models.ChatSession.user_id == current_user.id
+        models.ChatSession.user_id == None
     ).first()
     
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Chat session not found or you do not have permission"
+            detail="Chat session not found"
         )
-    # END Security Check
     
     messages = db.query(models.ChatMessage).filter(models.ChatMessage.session_id == session_id).order_by(models.ChatMessage.timestamp.asc()).all()
     return messages
@@ -182,12 +144,7 @@ def get_chat_history(
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-# After loading .env
-if not os.getenv('EMAIL_USER') or not os.getenv('EMAIL_PASSWORD'):
-    logger.error("Email credentials missing in .env file!")
-    logger.info("Please set EMAIL_USER and EMAIL_PASSWORD in your .env file")
-else:
-    logger.info("Email credentials loaded successfully")
+# Email validation removed - no longer needed without authentication
 
 
 
@@ -216,16 +173,7 @@ if not os.path.exists(env_path):
 
 load_dotenv(env_path)
 
-# Validate email credentials
-email_user = os.getenv('EMAIL_USER')
-email_password = os.getenv('EMAIL_PASSWORD')
-
-if not email_user or not email_password:
-    logger.error("Email credentials missing in .env file!")
-    logger.error("Please set EMAIL_USER and EMAIL_PASSWORD in your .env file")
-    # raise ValueError("Email credentials not configured")
-
-logger.info(f"Email configuration loaded for: {email_user}")
+# Email validation removed - no longer needed without authentication
 
 # Remove duplicate logging configuration
 # Delete or comment out the following lines that appear later in the file:
@@ -261,22 +209,7 @@ logger.info(f"Email configuration loaded for: {email_user}")
 # parent_dir = os.path.dirname(current_dir)
 # env_path = '/etc/secrets/.env'
 
-# if not os.path.exists(env_path):
-#     logger.error(f".env file not found at {env_path}")
-#     raise FileNotFoundError(f".env file not found at {env_path}")
-
-# load_dotenv(env_path)
-
-# Validate email credentials
-email_user = os.getenv('EMAIL_USER')
-email_password = os.getenv('EMAIL_PASSWORD')
-
-if not email_user or not email_password:
-    logger.error("Email credentials missing in .env file!")
-    logger.error("Please set EMAIL_USER and EMAIL_PASSWORD in your .env file")
-    # raise ValueError("Email credentials not configured")
-
-logger.info(f"Email configuration loaded for: {email_user}")
+# Duplicate code block removed
 
 # Remove duplicate logging configuration
 # Delete or comment out the following lines that appear later in the file:
@@ -295,26 +228,24 @@ async def get_all_jobs():
 @app.post("/api/chat")
 async def chat(
     chat_data: schemas.ChatData,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
     """
     Receives a user chat message, saves it, 
     and starts a background job for the AI's response.
-    Ensures the user owns the chat session.
+    Works with anonymous sessions.
     """
-    # NEW Security Check
+    # Check if session exists (anonymous sessions only)
     session = db.query(models.ChatSession).filter(
         models.ChatSession.id == chat_data.session_id,
-        models.ChatSession.user_id == current_user.id
+        models.ChatSession.user_id == None
     ).first()
     
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Chat session not found or you do not have permission"
+            detail="Chat session not found"
         )
-    # END Security Check
     
     # STEP 1: Save the USER's message immediately
     try:
@@ -339,7 +270,7 @@ async def chat(
     # STEP 2: Start the background job
     job_id = job_queue.create_job(
         job_type="chat",
-        user_id=current_user.id,
+        user_id=None,  # Anonymous session
         data={
             "chat_data": chat_data.dict(), 
             "user_message_id": db_message.id,
@@ -357,15 +288,14 @@ async def chat(
 @app.post("/api/rewrites", response_model=schemas.ClauseRewrite)
 def save_clause_rewrite(
     rewrite_data: schemas.ClauseRewriteCreate,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
     """
-    Saves a generated clause rewrite to the user's account.
+    Saves a generated clause rewrite (session-based, no user required).
     """
     new_rewrite = models.ClauseRewrite(
         **rewrite_data.dict(),
-        user_id=current_user.id
+        user_id=None  # Anonymous session
     )
     db.add(new_rewrite)
     db.commit()
@@ -374,13 +304,12 @@ def save_clause_rewrite(
 
 @app.get("/api/rewrites", response_model=List[schemas.ClauseRewrite])
 def get_saved_rewrites(
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
     """
-    Gets all saved clause rewrites for the logged-in user.
+    Gets all saved clause rewrites (anonymous sessions).
     """
-    return db.query(models.ClauseRewrite).filter(models.ClauseRewrite.user_id == current_user.id).order_by(models.ClauseRewrite.created_at.desc()).all()
+    return db.query(models.ClauseRewrite).filter(models.ClauseRewrite.user_id == None).order_by(models.ClauseRewrite.created_at.desc()).all()
 
 
 # MODIFIED: All other job-creating endpoints

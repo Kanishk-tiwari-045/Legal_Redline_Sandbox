@@ -1,15 +1,8 @@
 const API_BASE = import.meta.env.VITE_API_BASE || 'https://legal-redline-sandbox.onrender.com'
-const AUTH_API_BASE = import.meta.env.VITE_AUTH_API_BASE || 'https://legal-redline-sandbox-1.onrender.com'
 
-// Helper to get auth token
-function getAuthToken() {
-  return localStorage.getItem('auth_token')
-}
-
-// Helper to get auth headers
-function getAuthHeaders() {
-  const token = getAuthToken()
-  return token ? { 'Authorization': `Bearer ${token}` } : {}
+// Helper to get session ID
+function getSessionId() {
+  return localStorage.getItem('sessionId')
 }
 
 async function apiCall(url, options = {}) {
@@ -17,13 +10,15 @@ async function apiCall(url, options = {}) {
   const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
   try {
+    // Don't set Content-Type for FormData - let the browser set it with proper boundary
+    const headers = options.body instanceof FormData 
+      ? { ...options.headers }
+      : { 'Content-Type': 'application/json', ...options.headers };
+
     const response = await fetch(`${API_BASE}${url}`, {
       ...options,
       signal: controller.signal,
-      headers: {
-        ...options.headers,
-        ...getAuthHeaders(),
-      }
+      headers
     });
     
     clearTimeout(timeoutId);
@@ -52,79 +47,7 @@ async function apiCall(url, options = {}) {
   }
 }
 
-// Auth API functions
-export async function sendOtp(email) {
-  const res = await fetch(`${AUTH_API_BASE}/auth/send-otp`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email }),
-  })
-  return res.json()
-}
-
-export async function verifyOtp(email, otp) {
-  const res = await fetch(`${AUTH_API_BASE}/auth/verify-otp`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, otp }),
-  })
-  return res.json()
-}
-
-export async function verifyToken() {
-  const token = getAuthToken()
-  if (!token) return { valid: false }
-  
-  try {
-    const res = await fetch(`${AUTH_API_BASE}/auth/verify-token`, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    })
-    return res.json()
-  } catch (error) {
-    return { valid: false }
-  }
-}
-
-export async function logout() {
-  const token = getAuthToken()
-  if (!token) return
-
-  try {
-    await fetch(`${AUTH_API_BASE}/auth/logout`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    })
-  } catch (error) {
-    console.error('Logout error:', error)
-  }
-
-  // Clear local storage
-  localStorage.removeItem('auth_token')
-  localStorage.removeItem('auth_user')
-  localStorage.removeItem('auth_session_id')
-}
-
-export async function registerUser(email, username, password) {
-  const res = await fetch(`${AUTH_API_BASE}/auth/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, username, password }),
-  })
-  return res.json()
-}
-
-export async function loginUser(email, password) {
-  const res = await fetch(`${AUTH_API_BASE}/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
-  })
-  return res.json()
-}
+// Session management functions
 
 export async function createChatSession() {
   const res = await apiCall('/api/chat/sessions', {
@@ -132,26 +55,22 @@ export async function createChatSession() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({}),
   })
-  return res.json()
-}
-
-export function isAuthenticated() {
-  return !!getAuthToken()
-}
-
-export function getAuthUser() {
-  const user = localStorage.getItem('auth_user')
-  return user ? JSON.parse(user) : null
+  const data = await res.json()
+  
+  // Store session ID in localStorage
+  localStorage.setItem('sessionId', data.id)
+  
+  return data
 }
 
 // Job API
 export async function getJobStatus(jobId) {
-  const res = await apiCall(`/jobs/${jobId}`)
+  const res = await apiCall(`/api/jobs/${jobId}`)
   return res?.json()
 }
 
 export async function getAllJobs() {
-  const res = await apiCall('/jobs')
+  const res = await apiCall('/api/jobs')
   return res?.json()
 }
 
@@ -159,14 +78,14 @@ export async function getAllJobs() {
 export async function uploadFile(file, forceOcr = false) {
   const fd = new FormData()
   fd.append('file', file)
-  fd.append('force_ocr', forceOcr)
 
-  const res = await apiCall('/upload', { method: 'POST', body: fd })
+  const url = `/api/upload?force_ocr=${forceOcr}`
+  const res = await apiCall(url, { method: 'POST', body: fd })
   return res?.json()
 }
 
 export async function rewriteClause(clause, controls) {
-  const res = await apiCall('/rewrite', {
+  const res = await apiCall('/api/rewrite', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ clause, controls }),
@@ -175,7 +94,7 @@ export async function rewriteClause(clause, controls) {
 }
 
 export async function startChat(chatData) {
-  const res = await apiCall('/chat', {
+  const res = await apiCall('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(chatData),
@@ -184,7 +103,7 @@ export async function startChat(chatData) {
 }
 
 export async function explainTerm(term, context = '') {
-  const res = await apiCall('/explain', {
+  const res = await apiCall('/api/explain', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ term, context }),
@@ -193,7 +112,7 @@ export async function explainTerm(term, context = '') {
 }
 
 export async function analyzeClause(clauseText) {
-  const res = await apiCall('/analyze/clause', {
+  const res = await apiCall('/api/analyze/clause', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ clause_text: clauseText }),
@@ -202,7 +121,7 @@ export async function analyzeClause(clauseText) {
 }
 
 export async function translateToPlain(legalText) {
-  const res = await apiCall('/translate/plain', {
+  const res = await apiCall('/api/translate/plain', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ legal_text: legalText }),
@@ -211,7 +130,7 @@ export async function translateToPlain(legalText) {
 }
 
 export async function getHistoricalContext(clauseText) {
-  const res = await apiCall('/historical/context', {
+  const res = await apiCall('/api/historical/context', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ clause_text: clauseText }),
@@ -220,7 +139,7 @@ export async function getHistoricalContext(clauseText) {
 }
 
 export async function exportReport(reportData, format, options) {
-  const res = await apiCall('/export', {
+  const res = await apiCall('/api/export', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ report_data: reportData, format, options }),
@@ -229,7 +148,7 @@ export async function exportReport(reportData, format, options) {
 }
 
 export async function generateDiff(original, rewritten) {
-  const res = await apiCall('/diff', {
+  const res = await apiCall('/api/diff', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ original, rewritten }),
@@ -238,7 +157,7 @@ export async function generateDiff(original, rewritten) {
 }
 
 export async function redactDocument(text) {
-  const res = await apiCall('/privacy/redact', {
+  const res = await apiCall('/api/privacy/redact', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text }),
@@ -247,7 +166,7 @@ export async function redactDocument(text) {
 }
 
 export async function processPrivacy(documentContent, infoTypes, redactionLevel) {
-  const res = await apiCall('/privacy/redact', {
+  const res = await apiCall('/api/privacy/redact', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ 
@@ -285,7 +204,5 @@ export default {
   uploadFile, rewriteClause, startChat, explainTerm,
   analyzeClause, translateToPlain, getHistoricalContext, exportReport, 
   generateDiff, redactDocument, processPrivacy, getJobStatus, getAllJobs, startJobPolling,
-  // Auth exports
-  sendOtp, verifyOtp, verifyToken, logout, isAuthenticated, getAuthUser,
-  registerUser, loginUser, createChatSession
+  createChatSession
 }
