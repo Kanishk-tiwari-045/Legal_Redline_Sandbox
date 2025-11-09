@@ -27,7 +27,7 @@ import jwt from "jsonwebtoken";
 
 const app = express();
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000'], // Allow Vite dev server
+  origin: ['http://localhost:5173', 'http://localhost:3000', 'https://legal-redline-sandbox-nine.vercel.app'], // Allow Vite dev server
   credentials: true
 }));
 app.use(express.json());
